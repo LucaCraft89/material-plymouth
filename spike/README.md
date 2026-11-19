@@ -1,0 +1,1 @@
+Throw-away Phase 0 spike, see FINDINGS.md. `python3 make_theme.py OUT [--rate N --bar progress|indeterminate --wave dots|crop --morph N --password --debug]` then `./run_x11.sh OUT SHOTPREFIX [SECONDS]` (needs plymouth, plymouth-x11, plymouth-label, Xvfb, ImageMagick, librsvg2-bin, and a material-grub checkout in `$MG`).
