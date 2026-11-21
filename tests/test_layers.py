@@ -100,6 +100,93 @@ class PixelIdentity(Base):
         self.assertIsNone(diff.getbbox(), "the background shapes differ from GRUB's panel")
 
 
+class ListStyles(Base):
+    """list and split: one row instead of the list, the hero of split in layers; both are GRUB's own drawing."""
+
+    def test_the_single_row_is_what_grub_draws_for_a_list_of_one(self):
+        for osrel in (FEDORA, ARCH, UNKNOWN):
+            for ov in (
+                self.ov,
+                dict(self.ov, entries=[{"match": {"key": "fedora"}, "name": "Work laptop", "color": "#2E7D32"}]),
+            ):
+                with self.subTest(os=osrel.splitlines()[0], named=bool(ov["entries"])):
+                    L = self.look(osrel, ov=ov)
+                    ref = layers._blank(W, H)
+                    L.R.draw_list(ref, L.palette, [L.entry], 0, {"shape": "cookie"})
+                    r = layers.row(L, W, H)
+                    mine = layers._blank(W, H)
+                    for n in ("row_cookie", "row_glyph", "row_pill"):
+                        layers._paste(mine, *r[n])
+                    self.assertIsNone(ImageChops.difference(ref, mine).getbbox())
+
+    def test_the_row_in_split_sits_on_the_right(self):
+        L = self.look()
+        r = layers.row(L, W, H, L.R.split_x(W))
+        self.assertEqual(r["geometry"]["x0"], round(W * 0.47))
+        ref = layers._blank(W, H)
+        L.R.draw_list(ref, L.palette, [L.entry], 0, {"shape": "cookie"}, L.R.split_x(W))
+        mine = layers._blank(W, H)
+        for n in ("row_cookie", "row_glyph", "row_pill"):
+            layers._paste(mine, *r[n])
+        self.assertIsNone(ImageChops.difference(ref, mine).getbbox())
+
+    def test_the_side_hero(self):
+        L = self.look()
+        sh = layers.side_hero(L, W, H)
+        ref = layers._blank(W, H)
+        L.R.draw_side_hero(ref, L.key, L.palette, {}, None, L.R.title_for(L.entry))
+        mine = layers._blank(W, H)
+        for n in ("side_cookie", "side_glyph", "side_title"):
+            layers._paste(mine, *sh[n])
+        self.assertIsNone(ImageChops.difference(ref, mine).getbbox())
+
+    def test_the_side_hero_with_a_picture_of_your_own_is_a_white_card(self):
+        with tempfile.TemporaryDirectory() as t:
+            Image.new("RGBA", (120, 60), (200, 30, 30, 255)).save(Path(t) / "wide.png")
+            L = self.look(ov=dict(self.ov, entries=[{"match": {"key": "fedora"}, "icon": "file:wide.png"}]), icon_dir=t)
+            sh = layers.side_hero(L, W, H)
+            self.assertIn("side_card", sh)
+            self.assertNotIn("side_cookie", sh)
+            ref = layers._blank(W, H)
+            L.R.draw_side_hero(ref, L.key, L.palette, {}, None, L.R.title_for(L.entry))
+            mine = layers._blank(W, H)
+            for n in ("side_card", "side_title"):
+                layers._paste(mine, *sh[n])
+            self.assertIsNone(ImageChops.difference(ref, mine).getbbox())
+
+    def test_the_list_pills_are_where_grub_puts_them(self):
+        L = self.look()
+        ref = layers._blank(W, H)
+        L.R.pill_row(L.R.info_pills(L.entry), L.palette, W, L.R.u(846), ref, h=L.R.u(46))
+        mine = layers._blank(W, H)
+        layers._paste(mine, *layers.list_pills(L, W, H, y=L.R.u(846), h=L.R.u(46)))
+        self.assertIsNone(ImageChops.difference(ref, mine).getbbox())
+
+
+class Assets(Base):
+    """The bar, the prompt and the messages: in the palette's colours, in proportion to the screen."""
+
+    def test_colours_and_sizes(self):
+        L = self.look()
+        p, hx = L.palette, self.hexc
+        bar, prompt, msgs = layers.bar_assets(L), layers.prompt_assets(L), layers.message_assets(L)
+        self.assertEqual(dominant(bar["dot"]), hx(p["primary"]))
+        self.assertEqual(dominant(bar["track"]), hx(p["secondaryContainer"]))
+        self.assertEqual(dominant(prompt["pw_field"]), hx(p["surfaceContainerHigh"]))
+        self.assertEqual(dominant(prompt["pw_dot"]), hx(p["onSurface"]))
+        self.assertEqual(bar["track"].size, (560, 10))
+        big = layers.bar_assets(self.look(height=2160))
+        self.assertEqual(big["track"].size, (1120, 20))
+        for im in msgs.values():
+            self.assertGreater(im.width, 100)
+
+    def test_strings_are_pictures_so_the_initramfs_needs_no_fonts(self):
+        L = self.look()
+        a, b = layers.text_line(L, "Enter your disk password", 30), layers.text_line(L, "Shutting down", 40)
+        self.assertNotEqual(a.tobytes(), b.tobytes())
+        self.assertEqual(a.mode, "RGBA")
+
+
 class Customisations(Base):
     """Every option and override reaches the layers, in the right colour."""
 

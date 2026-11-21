@@ -7,7 +7,7 @@
 | Lint | | `ruff` (check and format), `shellcheck` and `actionlint`. |
 | Unit tests (Python 3.8 and 3.13) | 1 | The repository's own tests, and the **contract** with material-grub: a checkout of material-grub (`MATERIAL_GRUB_REF`, see the top of the workflow) must have the plugin API this part is written for (`tests/test_contract.py`; a missing or incompatible one fails the job). |
 | Consistency with GRUB (built package) | 1 | Builds material-grub's package from the same ref and runs the whole suite with `REQUIRE_CORE=1`: the Plymouth layers are pixel-identical to GRUB's own drawing (hero, title, pills, cookie, logo, background shapes), and every customisation reaches them (distro colours, one seed colour, names, icons, `COOKIE`, `LOGO`, screen sizes). Locally: build the package in a material-grub checkout (`python scripts/package.py --res 1920x1080`) and run the tests with `MATERIAL_GRUB` pointing at it; without a package those tests skip. |
-| Plymouth in Xvfb (harness) | 2 | `ci/xvfb_play.sh` plays a theme with Plymouth's X11 renderer under Xvfb and takes a screenshot a second; `ci/check_frames.py` checks they have the right size, are not blank, and (for an animated theme) that something moves. Today it runs on Ubuntu's stock `spinner` theme to prove the harness; the Material theme uses the same script once it exists. |
+| Plymouth in Xvfb (the theme and the harness) | 2 | `ci/xvfb_play.sh` plays a theme with Plymouth's X11 renderer under Xvfb and takes screenshots; `ci/check_frames.py` checks they are the right size, not blank, and (for an animated theme) that something moves. It runs on Ubuntu's stock `spinner` theme to prove the harness, then `tests/test_theme_play.py` plays the Material theme in every style and motion level and checks the screen: it draws, it moves (or is still with `PLYMOUTH_MOTION=off`, and `calm` and `off` cost less CPU than `full`), `COOKIE`, `LOGO`, a distro colour and the one seed colour reach the pixels, the disk-password prompt takes input (`PROMPT=1`: dots as you type, back to the bar after Enter, the answer reaches the asker) and shutdown mode (`PLY_MODE=shutdown`) shows its message. Screenshots are the `xvfb-screenshots` artifact. |
 | Distro probe (Fedora, Ubuntu, Debian, Arch, openSUSE) | 3, first part | `ci/probe-distro.sh` installs Plymouth and the initramfs tooling in a fresh container and writes down what is really there: package names, the script plugin, the initramfs integration (dracut, initramfs-tools or mkinitcpio), how the default theme is chosen, the Python version. It fails when an essential is missing. The report is in the job summary and an artifact. |
 | CI passed | | One name for branch protection to require. |
 
@@ -19,7 +19,7 @@
 pip install ruff shellcheck-py actionlint-py pillow pyyaml
 ruff check . && ruff format --check . && shellcheck -x --severity=warning ci/*.sh && actionlint
 MATERIAL_GRUB=../material-grub REQUIRE_CONTRACT=1 python3 -m unittest discover -s tests -v
-# the harness (needs plymouth, plymouth-x11, plymouth-theme-spinner, xvfb, imagemagick, bc; it links the theme into /usr/share/plymouth and writes
+# the harness and the played theme (needs plymouth, xdotool, plymouth-x11, plymouth-theme-spinner, xvfb, imagemagick, bc; it links the theme into /usr/share/plymouth and writes
 # /etc/plymouth, so use a throw-away machine or container)
 ci/xvfb_play.sh spinner build/xvfb/spinner 6 && python3 ci/check_frames.py --size 1920x1080 --moving build/xvfb/spinner-*.png
 ```
