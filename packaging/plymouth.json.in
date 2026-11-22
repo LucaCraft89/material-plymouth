@@ -1,0 +1,14 @@
+{
+  "manifest": 1,
+  "name": "plymouth",
+  "title": "Plymouth boot splash",
+  "version": "@VERSION@",
+  "core_api": 1,
+  "entry": "@SHARE@/bin/mgplugin.py",
+  "summary": "boot splash that continues the GRUB theme",
+  "menu": [
+    ["Plymouth boot splash: apply", "Render the theme and rebuild the initramfs", ["plymouth", "apply"]],
+    ["Plymouth boot splash: status", "What is installed", ["plymouth", "status"]],
+    ["Plymouth boot splash: remove", "Take the theme out again", ["plymouth", "remove"]]
+  ]
+}

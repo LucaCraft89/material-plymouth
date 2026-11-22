@@ -145,12 +145,17 @@ def script(look, pl):
     a(f"# Material Plymouth: style {pl['style']}, motion {pl['motion']}, bar {pl['bar_mode']}. Generated; do not edit.")
     a(f"Window.SetBackgroundTopColor({sc});\nWindow.SetBackgroundBottomColor({sc});")
     a(f"W = {W}; H = {H};")
-    a(
-        "ox = Math.Int((Window.GetWidth() - W) / 2); oy = Math.Int((Window.GetHeight() - H) / 2);   # centred when the screen is not the size it was built for"
-    )
+    # The scene is laid out in the pixels it was built for (W x H). On a screen of another size it is scaled to fit and centred (the background colour fills
+    # what is left), so a mismatch never leaves a small scene in a corner with bare edges. ZS is 1 for a screen within 2% of the built size.
+    a("ZS = Math.Min(Window.GetWidth() / W, Window.GetHeight() / H);")
+    a("if (ZS > 0.98 && ZS < 1.02) ZS = 1;")
+    a("ox = Math.Int((Window.GetWidth() - W * ZS) / 2); oy = Math.Int((Window.GetHeight() - H * ZS) / 2);")
     a("mode = Plymouth.GetMode();")
     a("frame = 0;")
-    a("fun add(file, x, y, z) { sp = Sprite(Image(file)); sp.SetPosition(ox + x, oy + y, z); return sp; }")
+    a(
+        "fun load(file) { im = Image(file); if (ZS != 1) im = im.Scale(Math.Max(1, Math.Int(im.GetWidth() * ZS)), Math.Max(1, Math.Int(im.GetHeight() * ZS))); return im; }"
+    )
+    a("fun add(file, x, y, z) { sp = Sprite(load(file)); sp.SetPosition(ox + x * ZS, oy + y * ZS, z); return sp; }")
     for name, z, _g in pl["static"]:
         _im, x, y = pl["pics"][name]
         a(f's_{name} = add("{name}.png", {n(x)}, {n(y)}, {z});')
@@ -158,22 +163,25 @@ def script(look, pl):
     a(f"rot_n = {len(rot)};")
     for i, r in enumerate(rot):
         a(
-            f'rot_img[{i}] = Image("{r["name"]}.png"); rot_spr[{i}] = Sprite(rot_img[{i}]); rot_cx[{i}] = {n(r["cx"])}; rot_cy[{i}] = {n(r["cy"])}; rot_half[{i}] = {n(r["half"])};'
+            f'rot_img[{i}] = load("{r["name"]}.png"); rot_spr[{i}] = Sprite(rot_img[{i}]); rot_cx[{i}] = {n(r["cx"])}; rot_cy[{i}] = {n(r["cy"])}; rot_half[{i}] = {n(r["half"])} * ZS; rot_deco[{i}] = {1 if r["name"].startswith("bg_") else 0};'
         )
         a(
             f"rot_sp[{i}] = {n(r['sp'])}; rot_z[{i}] = {r['z']}; rot_dx[{i}] = {n(r['d'][0])}; rot_dy[{i}] = {n(r['d'][1])}; rot_fx[{i}] = {n(r['d'][2])}; rot_fy[{i}] = {n(r['d'][3])}; rot_nm[{i}] = {r['nm']};"
         )
         for k in range(r["nm"]):
-            a(f'rot_morph[{i * 100 + k}] = Image("{r["name"]}_m{k}.png");')
+            a(f'rot_morph[{i * 100 + k}] = load("{r["name"]}_m{k}.png");')
     a("""fun place_rot(i, t) {
   if (rot_nm[i] > 0) base = rot_morph[i * 100 + Math.Int(frame / MORPH_EVERY) % rot_nm[i]]; else base = rot_img[i];
   rot_spr[i].SetImage(base.Rotate(t * rot_sp[i]));
-  rot_spr[i].SetPosition(ox + rot_cx[i] - rot_half[i] + rot_dx[i] * Math.Sin(t * rot_fx[i]), oy + rot_cy[i] - rot_half[i] + rot_dy[i] * Math.Cos(t * rot_fy[i]), rot_z[i]);
+  rot_spr[i].SetPosition(ox + ZS * (rot_cx[i] + rot_dx[i] * Math.Sin(t * rot_fx[i])) - rot_half[i], oy + ZS * (rot_cy[i] + rot_dy[i] * Math.Cos(t * rot_fy[i])) - rot_half[i], rot_z[i]);
 }""")
     a(
         f"RATE = {max(cad['rate'], len(rot))}; BAR_EVERY = {cad['bar']}; PULSE = {cad['pulse']}; MORPH_EVERY = {cad['morph'] or 1};"
     )
     a("for (i = 0; i < rot_n; i++) place_rot(i, 0);")
+    a(
+        "if (ZS < 0.5) { for (i = 0; i < rot_n; i++) if (rot_deco[i]) rot_spr[i].SetOpacity(0); }   # a very small screen: no decoration, just the content"
+    )
     # ---- the wavy bar
     BW, STROKE, AMP, LAM, STEP = u(Ly.BAR_W), u(Ly.BAR_STROKE), u(Ly.BAR_AMP), u(Ly.BAR_LAM), u(Ly.BAR_STEP)
     ndot = BW // STEP
@@ -181,7 +189,7 @@ def script(look, pl):
         f"BX = {n(bx)}; BY = {n(by)}; BW = {n(BW)}; STROKE = {n(STROKE)}; AMP = {n(AMP)}; LAM = {n(LAM)}; STEP = {n(STEP)}; NDOT = {ndot};"
     )
     a(f"PROGRESS = {1 if pl['bar_mode'] == 'progress' else 0}; shown = 0; target = 0; pw_on = 0;")
-    a('img_dot = Image("dot.png");')
+    a('img_dot = load("dot.png");')
     a('s_track = add("track.png", BX, BY, 5); s_stop = add("stop.png", BX + BW - STROKE, BY, 6);')
     a("for (i = 0; i < NDOT; i++) { dots[i] = Sprite(img_dot); dots[i].SetZ(6); dots[i].SetOpacity(0); }")
     a("""fun on_progress(duration, progress) { if (progress > target) target = progress; }
@@ -194,7 +202,7 @@ fun bar(t) {
   phase = t * 2 * Math.Pi * 1.1;
   for (i = 0; i < NDOT; i++) {
     x = i * STEP;
-    if (x >= s0 && x <= e0) { dots[i].SetPosition(ox + BX + x, oy + BY + AMP * Math.Sin(2 * Math.Pi * x / LAM - phase), 6); dots[i].SetOpacity(1); }
+    if (x >= s0 && x <= e0) { dots[i].SetPosition(ox + ZS * (BX + x), oy + ZS * (BY + AMP * Math.Sin(2 * Math.Pi * x / LAM - phase)), 6); dots[i].SetOpacity(1); }
     else dots[i].SetOpacity(0);
   }
 }
@@ -205,8 +213,8 @@ bar(0);""")
         body.append("  k = frame % RATE; if (k < rot_n) place_rot(k, t);")
     if cad["pulse"] and "card" in pl["pics"]:
         body += [
-            "  if (frame % PULSE == 1) { kk = 1 + 0.02 * Math.Sin(t * 1.6); s_card.SetImage(img_card.Scale(Math.Int(card_w * kk), Math.Int(card_h * kk)));",
-            "    s_card.SetPosition(ox + card_x + (card_w - Math.Int(card_w * kk)) / 2, oy + card_y + (card_h - Math.Int(card_h * kk)) / 2, 5); }",
+            "  if (frame % PULSE == 1) { kk = 1 + 0.02 * Math.Sin(t * 1.6); s_card.SetImage(img_card.Scale(Math.Int(card_w * kk * ZS), Math.Int(card_h * kk * ZS)));",
+            "    s_card.SetPosition(ox + ZS * (card_x + (card_w - card_w * kk) / 2), oy + ZS * (card_y + (card_h - card_h * kk) / 2), 5); }",
         ]
         im, x, y = pl["pics"]["card"]
         a(f'img_card = Image("card.png"); card_w = {im.width}; card_h = {im.height}; card_x = {x}; card_y = {y};')
@@ -218,14 +226,14 @@ bar(0);""")
         a("fun refresh() {\n" + "\n".join(body) + "\n}\nPlymouth.SetRefreshFunction(refresh);")
     # ---- messages and the disk password prompt
     sx, sy = pl["slot"]
-    a('s_msg_shutdown = Sprite(Image("msg_shutdown.png")); s_msg_updates = Sprite(Image("msg_updates.png"));')
+    a('s_msg_shutdown = Sprite(load("msg_shutdown.png")); s_msg_updates = Sprite(load("msg_updates.png"));')
     a(f"SLOT_X = {n(sx)}; SLOT_Y = {n(sy)};")
     a("""s_msg_shutdown.SetOpacity(0); s_msg_updates.SetOpacity(0);
 msg = 0;
 if (mode == "shutdown") msg = s_msg_shutdown;
 if (mode == "updates" || mode == "system-upgrade" || mode == "firmware-upgrade") msg = s_msg_updates;
 if (msg) {
-  msg.SetPosition(ox + SLOT_X - msg.GetImage().GetWidth() / 2, oy + SLOT_Y - msg.GetImage().GetHeight() / 2, 6); msg.SetOpacity(1);""")
+  msg.SetPosition(ox + SLOT_X * ZS - msg.GetImage().GetWidth() / 2, oy + SLOT_Y * ZS - msg.GetImage().GetHeight() / 2, 6); msg.SetOpacity(1);""")
     if any(g == "pills" for _n, _z, g in pl["static"]):
         a("  s_pills.SetOpacity(0);")
     a("}")
@@ -233,13 +241,13 @@ if (msg) {
     fx, fy = bx + (BW - pw) // 2, by + STROKE // 2 - ph // 2
     a(f"FX = {n(fx)}; FY = {n(fy)}; PWD = {u(20)}; PW_STEP = {u(30)}; PW_X0 = {u(36)};")
     a(
-        's_pw_field = Sprite(Image("pw_field.png")); s_pw_field.SetPosition(ox + FX, oy + FY, 9); s_pw_field.SetOpacity(0);'
+        's_pw_field = Sprite(load("pw_field.png")); s_pw_field.SetPosition(ox + FX * ZS, oy + FY * ZS, 9); s_pw_field.SetOpacity(0);'
     )
     a(
-        f's_pw_label = Sprite(Image("pw_label.png")); s_pw_label.SetPosition(ox + FX + (({pw}) - s_pw_label.GetImage().GetWidth()) / 2, oy + FY + {ph} + {u(22)}, 9); s_pw_label.SetOpacity(0);'
+        f's_pw_label = Sprite(load("pw_label.png")); s_pw_label.SetPosition(ox + FX * ZS + ({pw} * ZS - s_pw_label.GetImage().GetWidth()) / 2, oy + (FY + {ph} + {u(22)}) * ZS, 9); s_pw_label.SetOpacity(0);'
     )
     a(
-        'img_pwd = Image("pw_dot.png"); for (i = 0; i < 24; i++) { pwd[i] = Sprite(img_pwd); pwd[i].SetZ(10); pwd[i].SetOpacity(0); }'
+        'img_pwd = load("pw_dot.png"); for (i = 0; i < 24; i++) { pwd[i] = Sprite(img_pwd); pwd[i].SetZ(10); pwd[i].SetOpacity(0); }'
     )
     pills_hide = "s_pills.SetOpacity(0); " if any(g == "pills" for _n, _z, g in pl["static"]) else ""
     pills_show = "if (!msg) s_pills.SetOpacity(1); " if pills_hide else ""
@@ -248,7 +256,7 @@ if (msg) {
   for (i = 0; i < NDOT; i++) dots[i].SetOpacity(0);
   s_pw_field.SetOpacity(1); s_pw_label.SetOpacity(1);
   for (i = 0; i < 24; i++) {{
-    if (i < bullets) {{ pwd[i].SetPosition(ox + FX + PW_X0 + i * PW_STEP, oy + FY + ({ph} - PWD) / 2, 10); pwd[i].SetOpacity(1); }}
+    if (i < bullets) {{ pwd[i].SetPosition(ox + (FX + PW_X0 + i * PW_STEP) * ZS, oy + (FY + ({ph} - PWD) / 2) * ZS, 10); pwd[i].SetOpacity(1); }}
     else pwd[i].SetOpacity(0);
   }}
 }}
