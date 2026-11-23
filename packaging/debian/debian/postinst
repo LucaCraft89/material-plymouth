@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+case "$1" in
+  configure) /usr/share/material-plymouth/bin/package-hook.sh upgrade || true ;;   # only re-applies a theme that was applied before; never fails the dpkg run
+esac
+#DEBHELPER#
+exit 0

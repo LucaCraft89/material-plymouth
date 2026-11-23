@@ -1,0 +1,19 @@
+Source: material-plymouth
+Section: misc
+Priority: optional
+Maintainer: LucaCraft89 <noreply@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/LucaCraft89/material-plymouth
+Rules-Requires-Root: no
+
+Package: material-plymouth
+Architecture: all
+Depends: ${misc:Depends}, material-grub (>= 0.8.0), plymouth, plymouth-label, initramfs-tools | dracut, python3 (>= 3.8), python3-pil
+Description: Material 3 Expressive boot splash (Plymouth) that continues the Material GRUB theme
+ The same colours and per-distro look as the Material GRUB theme, an animated
+ cookie and shapes, the Material 3 Expressive wavy loading bar, the disk-password
+ prompt and the shutdown and update messages. It plugs into material-grub
+ (material-grub plymouth ...) and is managed from its GUI. Installing the package
+ does not change how the system boots: turning the splash on rebuilds the
+ initramfs and may edit the kernel command line, so it is a step of your own.

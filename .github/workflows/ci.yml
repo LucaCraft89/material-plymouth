@@ -232,10 +232,28 @@ jobs:
         if: always()
         with: {name: "qemu-${{ matrix.name }}-screenshots", path: "build/qemu/shots/\nbuild/qemu/handover/"}
 
+  package:
+    # Phase 6: the three package formats, built from this checkout in a distro container and exercised (ci/package-test.sh): the package holds the code, the
+    # entry file, the hook and the plugin manifest where material-grub looks, and nothing prebuilt; installing it changes NOTHING about how the system
+    # boots (no state, no call to material-grub); an upgrade re-applies only a theme that was applied before, with --if-changed --no-cmdline; removing it
+    # takes the theme out first and leaves no file of ours. A fake material-grub records what the scriptlets call. Needs no material-grub package.
+    name: Package ${{ matrix.format }} (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {format: rpm,  name: Fedora, image: "registry.fedoraproject.org/fedora:latest"}
+          - {format: deb,  name: Debian, image: "docker.io/library/debian:stable"}
+          - {format: arch, name: Arch,   image: "docker.io/library/archlinux:latest"}
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm -v "$PWD:/w:ro" "${{ matrix.image }}" sh /w/ci/package-test.sh ${{ matrix.format }}
+
   ci-ok:
     # one name for branch protection to require
     name: CI passed
-    needs: [lint, unit, consistency, xvfb, probe, initramfs, qemu]
+    needs: [lint, unit, consistency, xvfb, probe, initramfs, qemu, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
