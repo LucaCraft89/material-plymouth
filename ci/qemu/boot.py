@@ -184,6 +184,10 @@ def main():
                 elif word == "shutdown":
                     time.sleep(1)
                     frames["shutdown"] = q.shot(out / "shutdown.png")
+        try:
+            q.shot(out / "final.png")  # whatever is on screen at the end: the first thing to look at when a run fails
+        except Exception as e:  # QEMU may already be gone after the test's own power-off
+            print("no final screenshot:", e)
         got = len(frames)
         print(f"{got} screenshots, markers: {sorted(seen)}", flush=True)
     finally:
@@ -224,6 +228,17 @@ def main():
         px = s[1].getdata()
         black = sum(1 for v in px if v == (0, 0, 0)) / (s[1].width * s[1].height)
         check(black < 0.3, f"the splash is the theme's background, not a black text screen ({black:.0%} pure black)")
+
+    def black_share(im):
+        return sum(1 for v in im.getdata() if v == (0, 0, 0)) / (im.width * im.height)
+
+    # a text screen (an emergency shell, a crash dump) is nearly all pure black; every themed frame must not be
+    for name in ("prompt-empty", "prompt-typed", "prompt-erased", "shutdown"):
+        if name in frames:
+            check(
+                black_share(frames[name]) < 0.3,
+                f"{name}: the theme is on screen, not a black text screen ({black_share(frames[name]):.0%} pure black)",
+            )
     if "prompt-empty" in frames:
         p0, p1, p2 = frames["prompt-empty"], frames.get("prompt-typed"), frames.get("prompt-erased")
         check(check_frames.changed(s[2] or p0, p0), "the password prompt looks different from the boot splash")

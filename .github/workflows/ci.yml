@@ -184,12 +184,22 @@ jobs:
         run: docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" "${{ matrix.image }}" sh /w/ci/initramfs-e2e.sh
 
   qemu:
-    # Tier 4 of the plan, first distro: the theme in REAL Plymouth on a REAL initramfs, booted. ci/qemu/prepare.sh runs `plymouth apply` in a Fedora container
-    # (real kernel, real dracut) and builds a test initramfs the same way with one extra early hook; ci/qemu/boot.py boots kernel + initramfs in QEMU (KVM on
-    # the runner), drives the screen through the serial port and QMP, and checks: plymouthd lives, the splash is drawn and moves, the disk-password prompt
-    # shows dots as keys are typed and the typed password reaches the asker, shutdown mode shows its message. Screenshots are an artifact.
-    name: Boot in QEMU (Fedora)
+    # Tier 4 of the plan: the theme in REAL Plymouth on a REAL initramfs, booted, on each distro (Plymouth 22.x on openSUSE, 24.x on Debian and Ubuntu, 26.x
+    # on Fedora and Arch; dracut, initramfs-tools and mkinitcpio). ci/qemu/prepare.sh runs `plymouth apply` in a distro container (real kernel, real tool)
+    # and builds a test initramfs the same way with one extra early hook; ci/qemu/boot.py boots kernel + initramfs in QEMU (KVM on the runner), drives
+    # the screen through the serial port and QMP, and checks: plymouthd lives, the splash is drawn and moves, the disk-password prompt shows dots as keys are
+    # typed and the typed password reaches the asker, shutdown mode shows its message. Screenshots are an artifact.
+    name: Boot in QEMU (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: Fedora,   image: "registry.fedoraproject.org/fedora:latest"}
+          - {name: Ubuntu,   image: "docker.io/library/ubuntu:24.04"}
+          - {name: Debian,   image: "docker.io/library/debian:stable"}
+          - {name: Arch,     image: "docker.io/library/archlinux:latest"}
+          - {name: openSUSE, image: "registry.opensuse.org/opensuse/tumbleweed:latest"}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -209,15 +219,15 @@ jobs:
           python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --require-hashes -r requirements.txt
           .venv/bin/python scripts/package.py --res 1920x1080
-      - name: Apply the theme in a Fedora container and build the test initramfs
+      - name: Apply the theme in a ${{ matrix.name }} container and build the test initramfs
         run: |
           mkdir -p build/qemu
-          docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" -v "$PWD/build/qemu:/out" registry.fedoraproject.org/fedora:latest sh /w/ci/qemu/prepare.sh
+          docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" -v "$PWD/build/qemu:/out" "${{ matrix.image }}" sh /w/ci/qemu/prepare.sh
       - name: Boot it and look at the screen
-        run: python3 ci/qemu/boot.py build/qemu/vmlinuz build/qemu/initrd.img build/qemu/shots --timeout 600
+        run: python3 ci/qemu/boot.py build/qemu/vmlinuz build/qemu/initrd.img build/qemu/shots --timeout 900
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: qemu-fedora-screenshots, path: build/qemu/shots/}
+        with: {name: "qemu-${{ matrix.name }}-screenshots", path: build/qemu/shots/}
 
   ci-ok:
     # one name for branch protection to require
