@@ -281,6 +281,29 @@ class Rollback(Base):
 
 
 class Refusals(Base):
+    def test_no_label_plugin_is_refused_before_anything_is_touched(self):
+        # Plymouth 26's script plugin crashes plymouthd without it (found by the QEMU boot tier)
+        self.machine("fedora")
+        (self.root / "usr/lib64/plymouth/label-freetype.so").unlink()
+        before = snapshot(self.root)
+        r = self.apply()
+        self.assertEqual(r.status, "refused", r.messages)
+        self.assertIn("label plugin", r.messages[0])
+        self.assertEqual(snapshot(self.root), before)
+
+    def test_an_image_without_the_label_plugin_is_caught_and_rolled_back(self):
+        self.machine("fedora")
+        orig = self.fs.tools["dracut"]
+        self.fs.tools["dracut"] = lambda fs, cmd: orig(fs, cmd)
+        before = snapshot(self.root)
+        self.fs.tools["lsinitrd"] = lambda fs, cmd: (
+            lambda rc_out: (rc_out[0], rc_out[1].replace("label-freetype.so", "gone"))
+        )(fakes.lister(fs, cmd))
+        r = self.apply()
+        self.assertEqual(r.status, "rolled-back", r.messages)
+        self.assertIn("label plugin", r.messages[0])
+        self.assertEqual(snapshot(self.root), before)
+
     def test_no_script_plugin(self):
         self.machine("fedora")
         (self.root / "usr/lib64/plymouth/script.so").unlink()

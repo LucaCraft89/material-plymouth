@@ -226,7 +226,7 @@ def rebuild(system, tool):
 
 
 def verify_images(system, tool, since):
-    """Check the images the rebuild wrote (newer than `since`): each must hold the theme, the script plugin and its pictures. Returns (problems, checked, unverified)."""
+    """Check the images the rebuild wrote (newer than `since`): each must hold the theme, the script plugin, the label plugin and its pictures. Returns (problems, checked, unverified)."""
     from .system import TOOLS
 
     lister = TOOLS[tool][1]
@@ -249,6 +249,7 @@ def verify_images(system, tool, since):
             for what, ok in (
                 ("the theme script", f"themes/{THEME_NAME}/{THEME_NAME}.script" in out),
                 ("the script plugin", "script.so" in out),
+                ("the label plugin", re.search(r"plymouth/label\S*\.so", out) is not None),
                 ("its pictures", len(re.findall(rf"themes/{THEME_NAME}/\S+\.png", out)) >= 5),
             )
             if not ok
@@ -298,6 +299,14 @@ def apply(
             "refused",
             [
                 "Plymouth's script plugin is not installed (Fedora, openSUSE: plymouth-plugin-script; Debian, Ubuntu: plymouth; Arch: plymouth)"
+            ],
+        )
+    if not system.label_plugin():
+        return Result(
+            "refused",
+            [
+                "Plymouth's text-label plugin is not installed, and without it Plymouth 26 and newer crashes when it starts a script theme such as ours "
+                "(Fedora, openSUSE: plymouth-plugin-label; Debian, Ubuntu: plymouth-label; Arch: part of plymouth). Install it and run apply again"
             ],
         )
     if not tool:
@@ -512,6 +521,7 @@ def status(system):
         "state": st,
         "default_theme": system.default_theme(),
         "script_plugin": system.script_plugin(),
+        "label_plugin": system.label_plugin(),
         "initramfs_tool": tool,
         "images": [i.name for i in system.images()],
     }
