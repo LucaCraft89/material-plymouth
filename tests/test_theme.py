@@ -112,7 +112,12 @@ class Cadence(Base):
         )
         self.assertIn("Plymouth.SetRefreshFunction", full)
         self.assertIn("Plymouth.SetRefreshFunction", calm)
-        self.assertNotIn("Plymouth.SetRefreshFunction", off, "off: nothing moves, so no per-frame work at all")
+        # off: nothing moves. The refresh function only repaints the background colour (once a second for twenty seconds: a display attached late would
+        # otherwise show the scene on black, seen on Ubuntu under UEFI), it moves and animates nothing
+        body = off[off.index("fun refresh() {") : off.index("Plymouth.SetRefreshFunction")]
+        for moving in ("place_rot(", "bar(", "SetImage", "SetPosition", "SetOpacity"):
+            self.assertNotIn(moving, body, f"off: the per-frame function must not call {moving}")
+        self.assertIn("SetBackgroundTopColor", body)
         self.assertIn("PULSE = 8", full)
         self.assertIn("PULSE = 0", calm)
 
