@@ -7,6 +7,8 @@ What moves, how often (the Phase 0 spike measured that rotating and moving big s
   off    nothing moves; the wave is a still segment (PLYMOUTH_BAR=progress still fills as the boot progresses)
 """
 
+import math
+import re
 import shutil
 from pathlib import Path
 
@@ -305,3 +307,65 @@ def build(look, W, H, out, motion="full", bar="indeterminate", install_dir=None)
     )
     files = {f.name: f.stat().st_size for f in sorted(out.iterdir())}
     return {"files": files, "style": pl["style"], "size": sum(files.values()), "plan": pl}
+
+
+def preview(look, W, H, screen="boot", motion="full", bar="indeterminate"):
+    """A still of what the theme shows at rest, as a PIL RGB image: `boot` (the scene and the bar), `password` (the disk-password prompt with seven dots) or
+    `shutdown` (the shutdown message). It is the real layers at the real positions, and every number that is not in a layer (the bar's geometry, the prompt's
+    place, the message slot) is read from the script that build() writes, so the preview cannot drift from the theme. Used by the GUI."""
+    if screen not in ("boot", "password", "shutdown"):
+        raise ValueError(f"unknown screen {screen!r}")
+    pl = plan(look, W, H, motion, bar)
+    text = script(look, pl)
+
+    def consts(*names):
+        out = {}
+        for name in names:
+            m = re.search(rf"\b{name} = (-?[\d.]+)", text)
+            if not m:
+                raise ValueError(f"the script has no {name}")
+            out[name] = float(m[1])
+        return out
+
+    cv = Image.new("RGBA", (W, H), tuple(look.core.mgscenes.hexc(look.palette["surface"])) + (255,))
+    items = []  # (z, image, x, y)
+    for name, z, _group in pl["static"]:
+        if name == "pills" and screen != "boot":
+            continue  # the pills are hidden by the prompt and replaced by the message
+        im, x, y = pl["pics"][name]
+        items.append((z, im, x, y))
+    for r in pl["rot"]:
+        im, x, y = pl["pics"][r["name"]]
+        items.append((r["z"], im, x, y))
+    bars, prompts, msgs = Ly.bar_assets(look), Ly.prompt_assets(look), Ly.message_assets(look)
+    if screen != "password":
+        bx, by = pl["bar"]
+        k = consts("BW", "STROKE", "AMP", "LAM", "STEP")
+        items.append((5, bars["track"], bx, by))
+        items.append((6, bars["stop"], bx + int(k["BW"] - k["STROKE"]), by))
+        end = (0.45 if bar == "progress" else 0.38) * k["BW"]
+        x = 0.0
+        while x <= end:  # the wave, one dot per STEP pixels, as the script places them
+            dy = k["AMP"] * math.sin(2 * math.pi * x / k["LAM"])
+            items.append((6, bars["dot"], bx + int(x), by + int(dy)))
+            x += k["STEP"]
+    if screen == "password":
+        k = consts("FX", "FY", "PWD", "PW_STEP", "PW_X0")
+        fx, fy = int(k["FX"]), int(k["FY"])
+        items.append((9, prompts["pw_field"], fx, fy))
+        lw = prompts["pw_label"].width
+        fh = prompts["pw_field"].height
+        items.append(
+            (9, prompts["pw_label"], fx + (prompts["pw_field"].width - lw) // 2, fy + fh + look.R.u(22))
+        )  # the script's own offsets
+        for i in range(7):
+            items.append(
+                (10, prompts["pw_dot"], fx + int(k["PW_X0"] + i * k["PW_STEP"]), fy + int((fh - k["PWD"]) / 2))
+            )
+    if screen == "shutdown":
+        sx, sy = pl["slot"]
+        im = msgs["msg_shutdown"]
+        items.append((6, im, round(sx - im.width / 2), round(sy - im.height / 2)))
+    for _z, im, x, y in sorted(items, key=lambda t: t[0]):
+        Ly._paste(cv, im, x, y)
+    return cv.convert("RGB")

@@ -3,6 +3,7 @@
     apply [--yes] [--dry-run] [--if-changed] [--no-cmdline]   render the theme, install it, make it the default, rebuild the initramfs (undone on any failure)
     remove [--yes] [--dry-run]                                 take it all out again
     status [--json]                                            what is installed
+    preview SCREEN FILE.png [--style S] [--motion M] [--bar B] [--size WxH]  a still of the boot, password or shutdown screen (nothing is installed)
     build DIR [--style S] [--motion M] [--bar B] [--size WxH]  render the theme into DIR only (to look at it; nothing is installed)
 
 Settings come from /etc/material-grub.conf and overrides.json, shared with the GRUB theme. `--root DIR` works on a staged tree (tests, packaging).
@@ -49,6 +50,14 @@ def _parser():
     b.add_argument("--motion", choices=("full", "calm", "off"))
     b.add_argument("--bar", choices=("indeterminate", "progress"))
     b.add_argument("--size", help="WxH of the screen (default: the display's)")
+    pv = sub.add_parser("preview", help="a still picture of what the theme shows (boot, password or shutdown)")
+    pv.add_argument("screen", choices=("boot", "password", "shutdown"))
+    pv.add_argument("file")
+    pv.add_argument("--style", choices=("rail", "clean", "list", "split"))
+    pv.add_argument("--motion", choices=("full", "calm", "off"))
+    pv.add_argument("--bar", choices=("indeterminate", "progress"))
+    pv.add_argument("--size", help="WxH of the picture (default: the display's)")
+    pv.add_argument("--root", default="", help=argparse.SUPPRESS)
     for x in (a, r, s):
         x.add_argument("--root", default="", help=argparse.SUPPRESS)
     b.add_argument("--root", default="", help=argparse.SUPPRESS)
@@ -121,6 +130,22 @@ def main(argv, core):
         say(
             f"theme for {look.title} ({out['style']} style, {size[0]}x{size[1]}): {len(out['files'])} files, {out['size'] // 1024} KiB in {args.dir}"
         )
+        return 0
+    if args.cmd == "preview":
+        if args.style:
+            conf["STYLE"] = args.style
+        size = tuple(int(v) for v in args.size.lower().split("x")) if args.size else apply.detect_resolution(system)
+        look = adapter.look(conf, overrides, osrel, height=size[1])
+        im = theme.preview(
+            look,
+            size[0],
+            size[1],
+            args.screen,
+            motion=args.motion or conf["PLYMOUTH_MOTION"],
+            bar=args.bar or conf["PLYMOUTH_BAR"],
+        )
+        im.save(args.file)
+        say(f"{args.screen} preview for {look.title} ({size[0]}x{size[1]}) written to {args.file}")
         return 0
     if os.geteuid() != 0 and not root and not getattr(args, "dry_run", False):
         core.elevate(["plymouth", *argv], [f"/{apply.THEMES}", "/var/lib"])
