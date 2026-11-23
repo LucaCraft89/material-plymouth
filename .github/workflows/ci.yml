@@ -150,10 +150,43 @@ jobs:
         if: always()
         with: {name: "probe-${{ matrix.name }}", path: build/probe/}
 
+  initramfs:
+    # Tier 3 of the plan: apply and remove against a REAL initramfs. A fresh container per distro gets Plymouth, the distro's initramfs tool (dracut,
+    # initramfs-tools or mkinitcpio), a real kernel and the material-grub package; ci/initramfs_e2e.py then applies the theme, lists the image with the
+    # distro's own lister (the theme, the script plugin and the pictures must be inside, the script byte-identical), applies again (--if-changed does
+    # nothing), forces two failures (the tool fails; the tool writes broken images: everything must be byte-identical afterwards) and removes it again.
+    name: Real initramfs (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: Fedora,   image: "registry.fedoraproject.org/fedora:latest"}
+          - {name: Ubuntu,   image: "docker.io/library/ubuntu:24.04"}
+          - {name: Debian,   image: "docker.io/library/debian:stable"}
+          - {name: Arch,     image: "docker.io/library/archlinux:latest"}
+          - {name: openSUSE, image: "registry.opensuse.org/opensuse/tumbleweed:latest"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: LucaCraft89/material-grub
+          ref: ${{ env.MATERIAL_GRUB_REF }}
+          path: material-grub
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common
+      - name: Build material-grub's package
+        working-directory: material-grub
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install --require-hashes -r requirements.txt
+          .venv/bin/python scripts/package.py --res 1920x1080
+      - name: Apply and remove against a real initramfs
+        run: docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" "${{ matrix.image }}" sh /w/ci/initramfs-e2e.sh
+
   ci-ok:
     # one name for branch protection to require
     name: CI passed
-    needs: [lint, unit, consistency, xvfb, probe]
+    needs: [lint, unit, consistency, xvfb, probe, initramfs]
     if: always()
     runs-on: ubuntu-latest
     steps:

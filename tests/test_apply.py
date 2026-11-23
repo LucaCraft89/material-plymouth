@@ -318,6 +318,17 @@ class Ubuntu(Base):
             apply.read_state(self.fs)["default_before"], "/usr/share/plymouth/themes/spinner/spinner.plymouth"
         )
 
+    def test_a_failed_second_apply_keeps_the_theme_it_already_had_as_the_default(self):
+        # found by the real-initramfs tier on Ubuntu: rolling back used to remove our alternative, so Plymouth fell back to bgrt while the image still held ours
+        self.machine("ubuntu")
+        self.assertEqual(self.apply(regen_grub=lambda: (True, "")).status, "applied")
+        self.fs.tools["update-initramfs"] = fakes.builder(fail=True)
+        before = snapshot(self.root)
+        r = self.apply(conf=dict(self.conf, STYLE="split"), regen_grub=lambda: (True, ""))
+        self.assertEqual(r.status, "rolled-back", r.messages)
+        self.assertEqual((self.root / "etc/alternatives/default.plymouth").read_text(), f"/{THEME}/material.plymouth")
+        self.assertEqual(snapshot(self.root), before)
+
     def test_remove_goes_back_to_the_previous_alternative(self):
         self.machine("ubuntu")
         self.apply(regen_grub=lambda: (True, ""))
