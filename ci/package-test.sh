@@ -61,7 +61,7 @@ case $kind in
     pkg=$(ls /tmp/arch/material-plymouth-*.pkg.tar.*)
     echo "built $pkg"; pacman -Qpi "$pkg" | grep -E "^(Depends On)" | sed 's/^/  /'
     list() { pacman -Qpl "$pkg" | awk '{print $2}'; }
-    install() { pacman -U --noconfirm --assume-installed material-grub=0.8.0 "$pkg" >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
+    install() { pacman -U --noconfirm --assume-installed material-grub=1.0.0 "$pkg" >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
     upgrade() { install; }
     remove() { pacman -R --noconfirm material-plymouth >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
     ;;

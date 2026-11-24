@@ -18,7 +18,7 @@ CI: see [ci/README.md](ci/README.md).
 
 ## Install
 
-Not published yet (it comes out together with material-grub 0.8.0, which it needs: the plugin API). The three package definitions are in `packaging/` (rpm, deb, Arch) and are built and tested in CI. **Installing the package does not change how your system boots**: it puts the code and the plugin manifest in place and nothing else. Turning the splash on rebuilds the initramfs and may edit the kernel command line, so it is your own step: `material-grub plymouth apply` (or the Boot splash page of the GUI). Upgrading re-applies a theme that was applied before (never touching the kernel command line); removing the package takes the theme out first.
+Not published yet (it comes out together with material-grub 1.0.0, which it needs (the plugin API); the repositories share the version number at 1.0.0). The three package definitions are in `packaging/` (rpm, deb, Arch) and are built and tested in CI. **Installing the package does not change how your system boots**: it puts the code and the plugin manifest in place and nothing else. Turning the splash on rebuilds the initramfs and may edit the kernel command line, so it is your own step: `material-grub plymouth apply` (or the Boot splash page of the GUI). Upgrading re-applies a theme that was applied before (never touching the kernel command line); removing the package takes the theme out first.
 
 From a checkout, without a package: `sudo sh packaging/install-tree.sh . / /usr/local`, then `material-grub plymouth apply`.
 - Fedora and openSUSE (dracut), Debian and Ubuntu (initramfs-tools) and Arch (mkinitcpio) are the targets. So far only fake machines and Docker probes have been used: **no real boot has been tested.**

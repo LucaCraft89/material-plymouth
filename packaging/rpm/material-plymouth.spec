@@ -1,14 +1,14 @@
 # Builds from source: the RPM ships the sources (code and the plugin manifest); nothing is rendered or rebuilt when it is installed. Turning the boot splash
 # on rebuilds the initramfs and may edit the kernel command line, so it is the person's own step: `material-grub plymouth apply` (or the GUI).
 Name:           material-plymouth
-Version:        0.1.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Material 3 Expressive boot splash (Plymouth) that continues the Material GRUB theme
 License:        MIT
 URL:            https://github.com/LucaCraft89/material-plymouth
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
-Requires:       material-grub >= 0.8.0
+Requires:       material-grub >= 1.0.0
 Requires:       plymouth
 Requires:       plymouth-plugin-script
 Requires:       plymouth-plugin-label
@@ -41,5 +41,5 @@ if [ $1 -eq 0 ]; then /usr/share/material-plymouth/bin/package-hook.sh remove ||
 %{_datadir}/material-boot/plugins.d/plymouth.json
 
 %changelog
-* Mon Nov 23 2026 LucaCraft89 <noreply@users.noreply.github.com> - 0.1.0-1
-- First packaging.
+* Mon Nov 23 2026 LucaCraft89 <noreply@users.noreply.github.com> - 1.0.0-1
+- First release, level with material-grub (maintainer's decision: the three repositories start at 1.0.0).

@@ -25,7 +25,7 @@ class Versions(unittest.TestCase):
 
     def test_all_three_need_material_grub_with_the_plugin_api(self):
         for f in ("rpm/material-plymouth.spec", "arch/PKGBUILD", "debian/debian/control"):
-            self.assertRegex((PK / f).read_text(), r"material-grub\s*(>=|\(>=)\s*0\.8\.0", f)
+            self.assertRegex((PK / f).read_text(), r"material-grub\s*(>=|\(>=)\s*1\.0\.0", f)
 
     def test_all_three_need_what_the_theme_needs_at_boot(self):
         # the label plugin: Plymouth 26's script plugin crashes without it (found by the QEMU boot tier)
