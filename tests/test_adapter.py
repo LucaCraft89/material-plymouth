@@ -52,6 +52,10 @@ class OsRelease(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"MATERIAL_LIB": "/x/lib"}, clear=False):
             os.environ.pop("MATERIAL_DATA", None)
             self.assertEqual(adapter.candidates(), [(Path("/x/lib"), Path("/x/data"))])
+            real = Path.is_file  # a library with no data next to it (a bundle's): the data the installer built is used
+            built = "/usr/share/material-boot/data/palettes.json"
+            with unittest.mock.patch.object(Path, "is_file", lambda self: str(self) == built or real(self)):
+                self.assertEqual(adapter.candidates(), [(Path("/x/lib"), Path("/usr/share/material-boot/data"))])
             os.environ["MATERIAL_DATA"] = "/y/data"
             self.assertEqual(adapter.candidates(), [(Path("/x/lib"), Path("/y/data"))])
         with unittest.mock.patch.dict(os.environ, {}, clear=False):

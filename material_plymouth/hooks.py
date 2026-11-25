@@ -96,6 +96,9 @@ def take_away(ctx):
 def _settings(ctx):
     from .plugin import _settings as settings
 
+    adapter.attach(
+        ctx.core
+    )  # the core that is running the installer, with the data it has installed (a bundle's library has none of its own)
     return settings(ctx.core, ctx.root)
 
 
