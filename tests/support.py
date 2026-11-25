@@ -1,5 +1,6 @@
-"""Shared by the tests that need material-grub's code and a built package (dist/material-grub): finds them, or skips; in CI REQUIRE_CORE=1 makes
-a missing one a failure. A built package: `python scripts/package.py --res 1920x1080` in a material-grub checkout."""
+"""Shared by the tests that need material-boot-core and its built data: finds them, or skips; in CI REQUIRE_CORE=1 makes a missing one a failure.
+MATERIAL_LIB is the directory that holds the material_boot package (default: ../material-boot-core, a checkout); MATERIAL_DATA the data the core built
+(`python3 scripts/build_data.py --out DIR` in the core; default: `data` next to the library, which is where the installer puts it)."""
 
 import os
 import sys
@@ -8,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("MATERIAL_GRUB", str(Path(os.environ.get("MATERIAL_GRUB") or ROOT.parent / "material-grub")))
+os.environ.setdefault("MATERIAL_LIB", str(ROOT.parent / "material-boot-core"))
 os.environ["MATERIAL_OVERRIDES"] = (
     "/nonexistent/material-grub/overrides.json"  # never the overrides of the machine the tests run on
 )
@@ -20,7 +21,7 @@ REQUIRED = os.environ.get("REQUIRE_CORE") == "1"
 
 
 def core():
-    """material-grub's modules, or raise SkipTest (AssertionError when REQUIRE_CORE=1)."""
+    """material-boot-core's modules, or raise SkipTest (AssertionError when REQUIRE_CORE=1)."""
     try:
         return adapter.core()
     except adapter.CoreNotFound as e:

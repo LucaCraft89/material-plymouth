@@ -1,10 +1,10 @@
 #!/bin/sh
 # Tier 3: installs Plymouth, the distro's initramfs tool, a real kernel and Pillow in a fresh distro container, then runs ci/initramfs_e2e.py, which applies and
 # removes the theme against a REAL initramfs. Run inside a throw-away container: it installs packages, writes /boot and /etc.
-# usage: docker run --rm -v "$PWD:/w:ro" -v "$MATERIAL_GRUB_DIR:/mg:ro" IMAGE sh /w/ci/initramfs-e2e.sh
-#   /w   this repository, /mg   a material-grub checkout with a built package (dist/material-grub)
+# usage: docker run --rm -v "$PWD:/w:ro" -v "$CORE_DIR:/core:ro" -v "$CORE_DATA_DIR:/core-data:ro" IMAGE sh /w/ci/initramfs-e2e.sh
+#   /w   this repository, /core   a material-boot-core checkout, /core-data   the data its scripts/build_data.py wrote
 set -eu
-export MATERIAL_GRUB=/mg
+export MATERIAL_LIB=/core MATERIAL_DATA=/core-data
 # shellcheck disable=SC1091
 . /etc/os-release
 echo "== ${PRETTY_NAME:-$ID}"

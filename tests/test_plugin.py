@@ -1,6 +1,6 @@
-"""The command, end to end: this part is installed with packaging/install-tree.sh, found by material-grub's own plugin dispatcher, and driven as
-`material-grub plymouth ...` against a staged root, with small fake dracut / lsinitrd / plymouth-set-default-theme programs run through the real subprocess
-path. Needs a material-grub checkout WITH the plugin API (REQUIRE_CONTRACT=1 in CI) and a built package. usage: python3 tests/test_plugin.py"""
+"""The command, end to end: this part is installed with packaging/install-tree.sh, found by the core's plugin dispatcher, and driven as
+`material-boot plymouth ...` against a staged root, with small fake dracut / lsinitrd / plymouth-set-default-theme programs run through the real subprocess
+path. Needs material-boot-core (REQUIRE_CONTRACT=1 in CI) and its built data. usage: python3 tests/test_plugin.py"""
 
 import json
 import os
@@ -17,7 +17,7 @@ from fakes import snapshot  # noqa: E402
 from support import FEDORA  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-MG = Path(os.environ["MATERIAL_GRUB"])
+LIB = Path(os.environ["MATERIAL_LIB"])
 THEME = "usr/share/plymouth/themes/material"
 
 DRACUT = """#!/bin/sh
@@ -37,8 +37,8 @@ if [ $# -eq 0 ]; then cat "$f" 2>/dev/null || echo bgrt; elif [ "$1" = "--reset"
 class Command(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not (MG / "install/bin/mgplugins.py").is_file():
-            msg = f"material-grub at {MG} has no plugin API"
+        if not (LIB / "material_boot/plugins.py").is_file():
+            msg = f"material-boot-core at {LIB} has no plugin API"
             if os.environ.get("REQUIRE_CONTRACT") == "1":
                 raise AssertionError(msg)
             raise unittest.SkipTest(msg)
@@ -72,7 +72,8 @@ class Command(unittest.TestCase):
         self.env = dict(
             os.environ,
             MATERIAL_PLUGIN_PATH=str(self.plugins),
-            MATERIAL_GRUB=str(MG),
+            MATERIAL_LIB=str(LIB),
+            PYTHONPATH=str(LIB),
             MATERIAL_OVERRIDES="/nonexistent/overrides.json",
             MG_BGRT_IMAGE="/nonexistent",
             PATH=f"{self.bin}:{os.environ['PATH']}",
@@ -82,7 +83,7 @@ class Command(unittest.TestCase):
 
     def mg(self, *args, **env):
         r = subprocess.run(
-            [sys.executable, str(MG / "install/bin/cmd_cli.py"), *args],
+            [sys.executable, "-m", "material_boot", *args],
             capture_output=True,
             text=True,
             env={**self.env, **env},
@@ -91,16 +92,19 @@ class Command(unittest.TestCase):
         )
         return r.returncode, r.stdout + r.stderr
 
-    def test_material_grub_finds_the_part(self):
+    def test_the_core_finds_the_part(self):
         rc, out = self.mg("help")
-        self.assertIn("material-grub plymouth", out)
+        self.assertIn("plymouth", out)
         rc, out = self.mg("version")
         self.assertRegex(out, r"plymouth \d+\.\d+\.\d+")
 
-    def test_the_manifest_is_valid_for_the_installed_material_grub(self):
-        rc, out = self.mg("doctor", "--json")
-        rows = [r for r in json.loads(out) if r["check"] == "plugin plymouth"]
-        self.assertEqual([r["status"] for r in rows], ["ok"], rows)
+    def test_the_manifest_is_valid_for_the_installed_core(self):
+        rc, out = self.mg("core", "parts")
+        self.assertEqual(rc, 0, out)
+        self.assertRegex(out, r"plymouth\s+\d+\.\d+\.\d+\s+ok")
+        rc, out = self.mg("core", "doctor")
+        self.assertEqual(rc, 0, out)
+        self.assertRegex(out, r"ok\s+plymouth \d+\.\d+\.\d+")
 
     def test_preview_writes_a_still_of_each_screen(self):
         from PIL import Image

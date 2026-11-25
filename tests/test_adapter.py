@@ -1,4 +1,4 @@
-"""adapter: finding material-grub, os-release, who is booting, and the resolved look. Needs material-grub and a built package (see tests/support.py).
+"""adapter: finding the core, os-release, who is booting, and the resolved look. Needs material-boot-core and its built data (see tests/support.py).
 usage: python3 tests/test_adapter.py"""
 
 import json
@@ -38,15 +38,58 @@ class OsRelease(unittest.TestCase):
             self.assertEqual(adapter.grub_class({"NAME": name}), cls)
 
     def test_search_path_names_a_missing_core(self):
-        with unittest.mock.patch.dict(os.environ, {"MATERIAL_GRUB": "/nonexistent"}), unittest.mock.patch.object(
+        with unittest.mock.patch.dict(os.environ, {"MATERIAL_LIB": "/nonexistent"}), unittest.mock.patch.object(
             adapter, "_core", None
         ):
             with unittest.mock.patch.object(
-                adapter, "candidates", return_value=[(Path("/nonexistent/bin"), Path("/nonexistent/pkg"))]
+                adapter, "candidates", return_value=[(Path("/nonexistent/lib"), Path("/nonexistent/data"))]
             ):
                 with self.assertRaises(adapter.CoreNotFound) as cm:
                     adapter.core(refresh=True)
-        self.assertIn("/nonexistent/bin", str(cm.exception))
+        self.assertIn("/nonexistent/lib", str(cm.exception))
+
+    def test_the_search_order_and_the_data_next_to_the_library(self):
+        with unittest.mock.patch.dict(os.environ, {"MATERIAL_LIB": "/x/lib"}, clear=False):
+            os.environ.pop("MATERIAL_DATA", None)
+            self.assertEqual(adapter.candidates(), [(Path("/x/lib"), Path("/x/data"))])
+            os.environ["MATERIAL_DATA"] = "/y/data"
+            self.assertEqual(adapter.candidates(), [(Path("/x/lib"), Path("/y/data"))])
+        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MATERIAL_LIB", None)
+            os.environ.pop("MATERIAL_DATA", None)
+            self.assertEqual(
+                [str(lib) for lib, _ in adapter.candidates()],
+                ["/usr/share/material-boot/lib", "/usr/local/share/material-boot/lib", "/var/lib/material-boot/lib"],
+            )
+
+    def test_a_core_of_another_api_or_too_old_is_refused_with_the_reason(self):
+        import tempfile
+
+        for version, api, word in (("1.0.0", 1, "plugin API"), ("0.9.0", 2, "older")):
+            with tempfile.TemporaryDirectory() as t:
+                lib = Path(t) / "lib"
+                (lib / "material_boot").mkdir(parents=True)
+                (lib / "material_boot/__init__.py").write_text(f'__version__ = "{version}"\nCORE_API = {api}\n')
+                for m in ("conf", "custom", "overrides", "scenes", "titles"):
+                    (lib / f"material_boot/{m}.py").write_text("")
+                (Path(t) / "data").mkdir()
+                (Path(t) / "data/palettes.json").write_text("{}")
+                saved = {k: v for k, v in sys.modules.items() if k == "material_boot" or k.startswith("material_boot.")}
+                for k in saved:
+                    del sys.modules[k]
+                try:
+                    with unittest.mock.patch.object(adapter, "_core", None), unittest.mock.patch.dict(
+                        os.environ, {"MATERIAL_LIB": str(lib)}
+                    ):
+                        with self.assertRaises(adapter.CoreNotFound) as cm:
+                            adapter.core(refresh=True)
+                    self.assertIn(word, str(cm.exception))
+                finally:
+                    for k in [k for k in sys.modules if k == "material_boot" or k.startswith("material_boot.")]:
+                        del sys.modules[k]
+                    sys.modules.update(saved)
+                    if str(lib) in sys.path:
+                        sys.path.remove(str(lib))
 
 
 class Identity(unittest.TestCase):

@@ -2,9 +2,9 @@
 # Step 1 of the QEMU boot tier, in a fresh distro container: installs Plymouth, the distro's initramfs tool and a real kernel, runs `plymouth apply` for real,
 # then builds a TEST initramfs with the same tool (not host-only: it has to find a display under QEMU) with ci/qemu/mgtest-hook.sh added, and copies the kernel
 # and that image to /out.   Works on Fedora and openSUSE (dracut), Debian and Ubuntu (initramfs-tools), Arch (mkinitcpio).
-#   docker run --rm -v "$PWD:/w:ro" -v "$MG:/mg:ro" -v "$OUT:/out" IMAGE sh /w/ci/qemu/prepare.sh
+#   docker run --rm -v "$PWD:/w:ro" -v "$CORE_DIR:/core:ro" -v "$CORE_DATA_DIR:/core-data:ro" -v "$OUT:/out" IMAGE sh /w/ci/qemu/prepare.sh
 set -eu
-export MATERIAL_GRUB=/mg
+export MATERIAL_LIB=/core MATERIAL_DATA=/core-data
 # shellcheck disable=SC1091
 . /etc/os-release
 echo "== ${PRETTY_NAME:-$ID}"
