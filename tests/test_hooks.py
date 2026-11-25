@@ -1,6 +1,7 @@
 """The hooks of the unified installer (material_plymouth.hooks) on a fake machine (tests/fakes.py): the real logic of apply and remove, scripted programs.
 Needs material-boot-core and its built data (see tests/support.py). usage: python3 tests/test_hooks.py"""
 
+import json
 import sys
 import tempfile
 import unittest
@@ -91,6 +92,40 @@ class Install(Base):
         self.assertFalse(r["changed"])
         self.assertEqual(self.fs.calls[n:], [], "no program was run")
 
+    def test_a_source_install_puts_the_code_and_the_manifest_in_place(self):
+        hooks.hook_install(self.ctx())
+        share = self.root / "usr/local/share/material-plymouth"
+        self.assertTrue((share / "bin/mgplugin.py").is_file())
+        self.assertTrue((share / "material_plymouth/hooks.py").is_file())
+        manifest = json.loads((self.root / "usr/local/share/material-boot/plugins.d/plymouth.json").read_text())
+        self.assertEqual(manifest["entry"], "/usr/local/share/material-plymouth/bin/mgplugin.py")
+        self.assertEqual(manifest["version"], __version__)
+        self.assertEqual(manifest["hooks"], ["detect", "plan", "install", "verify", "uninstall", "doctor"])
+
+    def test_a_package_install_does_not_lay_anything_down(self):
+        hooks.hook_install(self.ctx(how="package"))
+        self.assertFalse((self.root / "usr/local/share/material-plymouth").exists())
+        self.assertFalse((self.root / "usr/local/share/material-boot").exists())
+
+    def test_running_from_the_installed_copy_does_not_copy_it_onto_itself(self):
+        hooks.hook_install(self.ctx())
+        share = self.root / "usr/local/share/material-plymouth"
+        with mock.patch.object(hooks, "SRC", share):
+            self.assertEqual(hooks.lay_down(self.ctx()), [])
+        self.assertTrue((share / "bin/mgplugin.py").is_file())
+
+    def test_the_plan_says_the_files_go_in_too(self):
+        self.assertTrue(any("install the part's files" in line for line in hooks.hook_plan(self.ctx())))
+        self.assertFalse(any("install the part's files" in line for line in hooks.hook_plan(self.ctx(how="package"))))
+
+    def test_a_failed_install_leaves_none_of_its_files(self):
+        self.fs = fakes.fedora(self.root / "other", fail=True) if False else self.fs
+        self.fs.tools["dracut"] = fakes.builder(fail=True)
+        with self.assertRaises(RuntimeError):
+            hooks.hook_install(self.ctx())
+        self.assertFalse((self.root / "usr/local/share/material-plymouth").exists())
+        self.assertFalse((self.root / "usr/local/share/material-boot/plugins.d/plymouth.json").exists())
+
     def test_a_dry_run_changes_nothing_and_says_what_it_would_do(self):
         before = snapshot(self.root)
         r = hooks.hook_install(self.ctx(dry_run=True))
@@ -173,9 +208,21 @@ class VerifyUninstallDoctor(Base):
         self.assertFalse((self.root / THEME).exists())
         self.assertEqual((self.root / "etc/plymouth/default-theme").read_text().strip(), "bgrt")
 
+    def test_uninstall_takes_the_files_away_too_but_never_a_packages(self):
+        hooks.hook_install(self.ctx())
+        hooks.hook_uninstall(self.ctx())
+        self.assertFalse((self.root / "usr/local/share/material-plymouth").exists())
+        self.assertFalse((self.root / "usr/local/share/material-boot/plugins.d/plymouth.json").exists())
+        hooks.hook_install(self.ctx())
+        hooks.hook_uninstall(self.ctx(how="package"))
+        self.assertTrue(
+            (self.root / "usr/local/share/material-plymouth/bin/mgplugin.py").is_file(),
+            "the package manager removes those, not us",
+        )
+
     def test_uninstall_of_nothing_is_nothing(self):
         before = snapshot(self.root)
-        self.assertEqual(hooks.hook_uninstall(self.ctx()), {"changed": False})
+        self.assertFalse(hooks.hook_uninstall(self.ctx())["changed"])
         self.assertEqual(snapshot(self.root), before)
 
     def test_uninstall_dry_run_changes_nothing(self):

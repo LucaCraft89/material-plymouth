@@ -8,8 +8,17 @@ a package install (`how == "package"`) is not: it only puts the code in place, a
 command line, exactly what packaging/package-hook.sh did for the package scriptlets.
 """
 
+import shutil
+import subprocess
+from pathlib import Path
+
 from . import apply
 from .system import System
+
+SRC = (
+    Path(__file__).resolve().parent.parent
+)  # the checkout, or this part's directory in a bundle, or the installed copy
+PREFIX = "/usr/local"  # a source or bundle install is not a package's: the code goes where `sh packaging/install-tree.sh . / /usr/local` puts it
 
 make_system = System  # tests put a scripted machine here
 
@@ -21,6 +30,67 @@ NOT_ASKED = (
 
 def _system(ctx):
     return make_system(ctx.root)
+
+
+def _share(ctx):
+    return Path(ctx.root or "/") / PREFIX.lstrip("/") / "share/material-plymouth"
+
+
+def _manifest(ctx):
+    return Path(ctx.root or "/") / PREFIX.lstrip("/") / "share/material-boot/plugins.d/plymouth.json"
+
+
+def lay_down(ctx):
+    """Put the code and the plugin manifest in place for a source or bundle install (a package has done it; running from the installed copy needs nothing).
+    Returns the lines to tell the person."""
+    if not _wants_files(ctx):
+        return []
+    r = subprocess.run(
+        ["sh", str(SRC / "packaging/install-tree.sh"), str(SRC), ctx.root or "", PREFIX], capture_output=True, text=True
+    )
+    if r.returncode:
+        raise RuntimeError("could not install the part's files: " + (r.stderr or r.stdout).strip()[-300:])
+    return [f"installed the part in {_share(ctx)} and its manifest in {_manifest(ctx).parent}"]
+
+
+def _current(ctx):
+    """The installed copy is this one: every file the same, the manifest in place (an install that changes nothing says so)."""
+    share = _share(ctx)
+    pairs = [(f, share / "material_plymouth" / f.name) for f in sorted((SRC / "material_plymouth").glob("*.py"))]
+    pairs.append((SRC / "bin/mgplugin.py", share / "bin/mgplugin.py"))
+    try:
+        return _manifest(ctx).is_file() and all(b.read_bytes() == a.read_bytes() for a, b in pairs)
+    except OSError:
+        return False
+
+
+def _wants_files(ctx):
+    """A source or bundle install with files to install (a checkout or a bundle has packaging/install-tree.sh; an installed copy, a package's or ours, has not)
+    that are not there already."""
+    return (
+        ctx.how != "package"
+        and (SRC / "packaging/install-tree.sh").is_file()
+        and SRC.resolve() != _share(ctx).resolve()
+        and not _current(ctx)
+    )
+
+
+def _would_lay_down(ctx):
+    if not _wants_files(ctx):
+        return []
+    return [f"install the part's files in {_share(ctx)} and its manifest in {_manifest(ctx).parent}"]
+
+
+def take_away(ctx):
+    """The files lay_down put there (never a package's). Returns True when something was removed."""
+    gone = False
+    if _share(ctx).exists() and ctx.how != "package":
+        shutil.rmtree(_share(ctx), ignore_errors=True)
+        gone = True
+    if _manifest(ctx).exists() and ctx.how != "package":
+        _manifest(ctx).unlink()
+        gone = True
+    return gone
 
 
 def _settings(ctx):
@@ -74,7 +144,7 @@ def hook_plan(ctx):
     )
     if not res.ok:
         raise RuntimeError("; ".join(res.messages))
-    return list(res.plan) or list(res.messages)
+    return _would_lay_down(ctx) + (list(res.plan) or list(res.messages))
 
 
 def hook_install(ctx):
@@ -82,25 +152,33 @@ def hook_install(ctx):
     if ctx.dry_run:
         return {"changed": False, "notes": hook_plan(ctx)}
     package = ctx.how == "package"
-    if package and not apply.read_state(system):
-        return {"changed": False, "notes": [NOT_ASKED]}  # installed, not applied: the part is still recorded
-    conf, overrides, osrel = _settings(ctx)
-    notes = []
-    res = apply.apply(
-        system,
-        conf,
-        overrides,
-        osrel,
-        yes=ctx.yes,
-        if_changed=True,
-        no_cmdline=bool(ctx.options.get("no-cmdline")) or package,
-        ask=_ask,
-        log=notes.append,
-    )
-    if not res.ok:
-        _report(res)
-        raise RuntimeError("; ".join(res.messages))
-    return {"changed": res.status == "applied", "notes": res.messages}
+    notes = lay_down(ctx)
+    try:
+        if package and not apply.read_state(system):
+            return {
+                "changed": bool(notes),
+                "notes": notes + [NOT_ASKED],
+            }  # installed, not applied: the part is still recorded
+        conf, overrides, osrel = _settings(ctx)
+        res = apply.apply(
+            system,
+            conf,
+            overrides,
+            osrel,
+            yes=ctx.yes,
+            if_changed=True,
+            no_cmdline=bool(ctx.options.get("no-cmdline")) or package,
+            ask=_ask,
+            log=lambda *_a: None,
+        )
+        if not res.ok:
+            _report(res)
+            raise RuntimeError("; ".join(res.messages))
+    except BaseException:
+        if notes:  # a part that failed is not left half installed: what this run put there goes again
+            take_away(ctx)
+        raise
+    return {"changed": res.status == "applied" or bool(notes), "notes": notes + res.messages}
 
 
 def hook_verify(ctx):
@@ -118,14 +196,19 @@ def hook_verify(ctx):
 
 def hook_uninstall(ctx):
     system = _system(ctx)
-    if not (apply.read_state(system) or system.p(apply.THEME_DIR).is_dir()):
-        return {"changed": False}
+    theme = bool(apply.read_state(system) or system.p(apply.THEME_DIR).is_dir())
     if ctx.dry_run:
-        return {"changed": False, "notes": ["the theme would be taken out and the initramfs rebuilt without it"]}
-    res = apply.remove(system, yes=True, ask=_ask, log=lambda *_a: None)
-    if not res.ok:
-        raise RuntimeError("; ".join(res.messages))
-    return {"changed": True, "notes": res.messages}
+        return {
+            "changed": False,
+            "notes": ["the theme would be taken out and the initramfs rebuilt without it"] if theme else [],
+        }
+    notes = []
+    if theme:
+        res = apply.remove(system, yes=True, ask=_ask, log=lambda *_a: None)
+        if not res.ok:
+            raise RuntimeError("; ".join(res.messages))
+        notes = res.messages
+    return {"changed": take_away(ctx) or theme, "notes": notes}
 
 
 def hook_doctor(ctx):

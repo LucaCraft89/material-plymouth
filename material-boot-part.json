@@ -1,0 +1,71 @@
+{
+  "manifest": 2,
+  "name": "plymouth",
+  "title": "Plymouth boot splash",
+  "version": "1.0.0",
+  "summary": "boot splash that continues the GRUB theme",
+  "core_api": 2,
+  "core_min": "1.0.0",
+  "entry": "bin/mgplugin.py",
+  "commands": {
+    "apply": "render the theme, install it and rebuild the initramfs (undone on any failure)",
+    "remove": "take the theme out again",
+    "status": "what is installed",
+    "preview": "a still picture of the boot, password or shutdown screen",
+    "build": "render the theme into a directory, install nothing"
+  },
+  "menu": [
+    [
+      "Plymouth boot splash: apply",
+      "Render the theme and rebuild the initramfs",
+      [
+        "plymouth",
+        "apply"
+      ]
+    ],
+    [
+      "Plymouth boot splash: status",
+      "What is installed",
+      [
+        "plymouth",
+        "status"
+      ]
+    ],
+    [
+      "Plymouth boot splash: remove",
+      "Take the theme out again",
+      [
+        "plymouth",
+        "remove"
+      ]
+    ]
+  ],
+  "conf": [
+    "PLYMOUTH",
+    "PLYMOUTH_BAR",
+    "PLYMOUTH_MOTION"
+  ],
+  "install": {
+    "default": false,
+    "needs": [],
+    "package": "material-plymouth",
+    "layouts": [
+      "normal"
+    ],
+    "options": [
+      {
+        "name": "no-cmdline",
+        "takes": "flag",
+        "summary": "never edit the kernel command line (you add 'splash' yourself)"
+      }
+    ]
+  },
+  "hooks": [
+    "detect",
+    "plan",
+    "install",
+    "verify",
+    "uninstall",
+    "doctor"
+  ]
+}
