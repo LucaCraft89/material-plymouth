@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import apply
+from . import adapter, apply
 from .system import System
 
 SRC = (
@@ -131,7 +131,13 @@ def hook_plan(ctx):
     system = _system(ctx)
     if ctx.how == "package" and not apply.read_state(system):
         return [NOT_ASKED]
-    conf, overrides, osrel = _settings(ctx)
+    try:
+        conf, overrides, osrel = _settings(ctx)
+    except adapter.CoreNotFound:
+        # a dry run on a fresh system: the core's shared data is built by this very run, so the theme cannot be planned yet
+        return _would_lay_down(ctx) + [
+            "render the theme, install it, make it the default theme and rebuild the initramfs (the plan of that needs the core's shared data, which this run builds first)"
+        ]
     res = apply.apply(
         system,
         conf,
