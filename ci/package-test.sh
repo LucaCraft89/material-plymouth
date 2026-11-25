@@ -4,7 +4,8 @@
 # What it proves: the package builds; it holds the code, the hook and the plugin manifest where the core looks; the scriptlets only ask the unified installer
 # (`material-boot core install --from-package --only plymouth`: it records the part, and its hook re-applies a theme that was applied before, never touching the
 # kernel command line, which tests/test_hooks.py covers) and installing it changes NOTHING about how the system boots (no state file, no theme); removing the
-# package asks it to take the theme out first, and leaves no file of ours. A fake `material-boot` logs what the scriptlets call.
+# package asks it to take the theme out first, and leaves no file of ours. Without a core package in /corepkg a fake `material-boot` logs what
+# the scriptlets call; with one (CI builds it from the core's checkout) the REAL core is installed first and the part is checked through it.
 set -eu
 kind=${1:?rpm, deb or arch}
 ver=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' /w/material_plymouth/__init__.py)
@@ -18,7 +19,11 @@ check() { desc=$1; shift; if "$@"; then ok "$desc"; else bad "$desc"; fi; }
 mkdir -p /tmp/src && cp -r /w /tmp/src/material-plymouth-"$ver" && rm -rf /tmp/src/material-plymouth-"$ver"/.git
 tar -C /tmp/src -czf "$work/material-plymouth-$ver.tar.gz" material-plymouth-"$ver"
 
-# a fake material-boot: records every call and pretends to work
+# the core: a REAL core package when /corepkg has one (CI builds it from the core's checkout), else a fake `material-boot` that records every call and pretends
+# to work (a quick run on a machine without the core's checkout)
+RECORD='core install --from-package --only plymouth --yes'
+REAL=0; [ -d /corepkg ] && [ -n "$(ls /corepkg 2>/dev/null)" ] && REAL=1
+if [ "$REAL" = 0 ]; then
 cat >/usr/local/bin/material-boot <<'FAKE'
 #!/bin/sh
 echo "$*" >> /tmp/material-boot.calls
@@ -26,7 +31,7 @@ exit 0
 FAKE
 chmod +x /usr/local/bin/material-boot
 : >/tmp/material-boot.calls
-RECORD='core install --from-package --only plymouth --yes'
+fi
 
 case $kind in
   rpm)
@@ -62,12 +67,22 @@ case $kind in
     pkg=$(ls /tmp/arch/material-plymouth-*.pkg.tar.*)
     echo "built $pkg"; pacman -Qpi "$pkg" | grep -E "^(Depends On)" | sed 's/^/  /'
     list() { pacman -Qpl "$pkg" | awk '{print $2}'; }
-    install() { pacman -U --noconfirm --assume-installed material-boot-core=1.0.0 "$pkg" >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
+    assume=material-boot-core=1.0.0; [ "$REAL" = 1 ] && assume=""
+    install() { pacman -U --noconfirm ${assume:+--assume-installed "$assume"} "$pkg" >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
     upgrade() { install; }
     remove() { pacman -R --noconfirm material-plymouth >"$work/pacman.log" 2>&1 || { tail -20 "$work/pacman.log"; return 1; }; }
     ;;
   *) echo "unknown kind $kind"; exit 2 ;;
 esac
+
+if [ "$REAL" = 1 ]; then  # the real core, with its own dependencies, installed first as a user would
+  case $kind in
+    rpm) dnf -y install /corepkg/*.rpm >/dev/null ;;
+    deb) apt-get install -y /corepkg/*.deb >/dev/null ;;
+    arch) pacman -U --noconfirm /corepkg/*.pkg.tar.* >/dev/null 2>&1 ;;
+  esac
+  check "the real core is installed and runs" sh -c "material-boot version | grep -q 'plugin API 2'"
+fi
 
 listing=$(list)
 check "the package holds the plugin manifest where the core looks" sh -c "echo '$listing' | grep -q 'share/material-boot/plugins.d/plymouth.json'"
@@ -79,24 +94,38 @@ install
 check "installed: the manifest names this version and a file that exists" sh -c "
   v=\$(sed -n 's/.*\"version\": \"\\(.*\\)\".*/\\1/p' /usr/share/material-boot/plugins.d/plymouth.json); [ \"\$v\" = '$ver' ] &&
   e=\$(sed -n 's/.*\"entry\": \"\\(.*\\)\".*/\\1/p' /usr/share/material-boot/plugins.d/plymouth.json) && [ -f \"\$e\" ]"
-check "installed: the scriptlet only asked the unified installer to record the part" sh -c "[ \"\$(cat /tmp/material-boot.calls)\" = '$RECORD' ]"
+if [ "$REAL" = 0 ]; then
+  check "installed: the scriptlet only asked the unified installer to record the part" sh -c "[ \"\$(cat /tmp/material-boot.calls)\" = '$RECORD' ]"
+else
+  check "installed: the real core lists the part as usable" sh -c "material-boot core parts | grep -q 'plymouth .* ok'"
+  check "installed: the state record names the part" sh -c "grep -q '\"plymouth\"' /var/lib/material-grub/state.json"
+fi
 check "installed: no state file, no theme directory" sh -c "[ ! -e /var/lib/material-plymouth/state.json ] && [ ! -e /usr/share/plymouth/themes/material ]"
 check "installed: the code imports" python3 -c "import sys; sys.path.insert(0, '/usr/share/material-plymouth'); import material_plymouth; assert material_plymouth.__version__ == '$ver'"
 
 # ---- upgrade of a theme that was never applied: still nothing
 upgrade
-check "upgraded, never applied: the same one call (its hook applies nothing without a state)" sh -c "[ \"\$(cat /tmp/material-boot.calls | sort -u)\" = '$RECORD' ] && [ \$(wc -l < /tmp/material-boot.calls) = 2 ]"
-: >/tmp/material-boot.calls
+if [ "$REAL" = 0 ]; then
+  check "upgraded, never applied: the same one call (its hook applies nothing without a state)" sh -c "[ \"\$(cat /tmp/material-boot.calls | sort -u)\" = '$RECORD' ] && [ \$(wc -l < /tmp/material-boot.calls) = 2 ]"
+  : >/tmp/material-boot.calls
 
-# ---- upgrade of a theme that WAS applied: the same call (the hook decides: it renders again, without touching the kernel command line)
-mkdir -p /var/lib/material-plymouth && echo '{}' >/var/lib/material-plymouth/state.json
-upgrade
-check "upgraded, applied before: the same one call and nothing else" sh -c "[ \"\$(cat /tmp/material-boot.calls)\" = '$RECORD' ]"
-: >/tmp/material-boot.calls
+  # ---- upgrade of a theme that WAS applied: the same call (the hook decides: it renders again, without touching the kernel command line)
+  mkdir -p /var/lib/material-plymouth && echo '{}' >/var/lib/material-plymouth/state.json
+  upgrade
+  check "upgraded, applied before: the same one call and nothing else" sh -c "[ \"\$(cat /tmp/material-boot.calls)\" = '$RECORD' ]"
+  : >/tmp/material-boot.calls
+else
+  check "upgraded, never applied: still no state file, no theme directory, the part still recorded" sh -c "[ ! -e /var/lib/material-plymouth/state.json ] && [ ! -e /usr/share/plymouth/themes/material ] && grep -q '\"plymouth\"' /var/lib/material-grub/state.json"
+fi
 
 # ---- remove: the theme is taken out first, our files are gone
 remove
-check "removed: the unified installer was asked to take the part out (and with it the theme)" sh -c "grep -qx 'core install --uninstall --from-package --only plymouth --yes' /tmp/material-boot.calls"
+if [ "$REAL" = 0 ]; then
+  check "removed: the unified installer was asked to take the part out (and with it the theme)" sh -c "grep -qx 'core install --uninstall --from-package --only plymouth --yes' /tmp/material-boot.calls"
+else
+  check "removed: the state record forgot the part and kept the core" sh -c "! grep -q '\"plymouth\"' /var/lib/material-grub/state.json && grep -q '\"core\"' /var/lib/material-grub/state.json"
+  check "removed: the core still runs and no longer lists the part" sh -c "material-boot version >/dev/null && ! material-boot core parts | grep -q plymouth"
+fi
 check "removed: no file of ours is left" sh -c "[ ! -e /usr/share/material-plymouth ] && [ ! -e /usr/share/material-boot/plugins.d/plymouth.json ]"
 rm -f /var/lib/material-plymouth/state.json
 

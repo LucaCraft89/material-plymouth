@@ -223,7 +223,7 @@ jobs:
     # Phase 6: the three package formats, built from this checkout in a distro container and exercised (ci/package-test.sh): the package holds the code, the
     # entry file, the hook and the plugin manifest where material-grub looks, and nothing prebuilt; installing it changes NOTHING about how the system
     # boots (no state, no call to material-grub); an upgrade re-applies only a theme that was applied before, with --if-changed --no-cmdline; removing it
-    # takes the theme out first and leaves no file of ours. A fake material-grub records what the scriptlets call. Needs no material-grub package.
+    # takes the theme out first and leaves no file of ours. The REAL core package is built from the core's checkout and installed first.
     name: Package ${{ matrix.format }} (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -235,7 +235,16 @@ jobs:
           - {format: arch, name: Arch,   image: "docker.io/library/archlinux:latest"}
     steps:
       - uses: actions/checkout@v4
-      - run: docker run --rm -v "$PWD:/w:ro" "${{ matrix.image }}" sh /w/ci/package-test.sh ${{ matrix.format }}
+      - uses: actions/checkout@v4
+        with:
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
+      - name: Build the core's package (the real one, from its checkout)
+        run: |
+          mkdir -p build/corepkg
+          docker run --rm -v "$PWD/material-boot-core:/src:ro" -v "$PWD/build/corepkg:/out" "${{ matrix.image }}" sh /src/tests/containers/build_pkg.sh ${{ matrix.format }}
+      - run: docker run --rm -v "$PWD:/w:ro" -v "$PWD/build/corepkg:/corepkg:ro" "${{ matrix.image }}" sh /w/ci/package-test.sh ${{ matrix.format }}
 
   ci-ok:
     # one name for branch protection to require
