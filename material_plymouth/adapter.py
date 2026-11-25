@@ -34,12 +34,26 @@ SYSTEM_LIBS = ("/usr/share/material-boot/lib", "/usr/local/share/material-boot/l
 
 
 def candidates():
-    """[(lib dir, data dir)] in the order they are tried: $MATERIAL_LIB (the directory that holds the material_boot package; the data is $MATERIAL_DATA, else
-    `data` next to it) and nothing else when it is set, else where the packages and the installer put the core."""
+    """[(lib dir, data dir)] in the order they are tried: $MATERIAL_LIB (the directory that holds the material_boot package) and nothing else when it is set,
+    else where the packages and the installer put the core. The data is $MATERIAL_DATA, else `data` next to the library, else where the installer builds it
+    (a library that is only a bundle's or a checkout's has no data next to it)."""
     env = os.environ.get("MATERIAL_LIB")
     libs = [Path(env)] if env else [Path(p) for p in SYSTEM_LIBS]
     data = os.environ.get("MATERIAL_DATA")
-    return [(lib, Path(data) if data else lib.parent / "data") for lib in libs]
+    out = []
+    for lib in libs:
+        want = (
+            [Path(data)]
+            if data
+            else [
+                lib.parent / "data",
+                Path("/usr/share/material-boot/data"),
+                Path("/usr/local/share/material-boot/data"),
+            ]
+        )
+        found = next((d for d in want if (d / "palettes.json").is_file()), want[0])
+        out.append((lib, found))
+    return out
 
 
 def _version(text):
