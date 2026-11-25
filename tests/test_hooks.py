@@ -92,6 +92,17 @@ class Install(Base):
         self.assertFalse(r["changed"])
         self.assertEqual(self.fs.calls[n:], [], "no program was run")
 
+    def test_the_plan_on_a_fresh_system_without_the_cores_data_says_so_instead_of_failing(self):
+        from material_plymouth import adapter
+
+        def missing(ctx):
+            raise adapter.CoreNotFound("not built yet")
+
+        with mock.patch.object(hooks, "_settings", missing):
+            plan = hooks.hook_plan(self.ctx())
+        self.assertTrue(any("shared data" in line for line in plan), plan)
+        self.assertTrue(any("install the part's files" in line for line in plan), plan)
+
     def test_a_source_install_puts_the_code_and_the_manifest_in_place(self):
         hooks.hook_install(self.ctx())
         share = self.root / "usr/local/share/material-plymouth"
