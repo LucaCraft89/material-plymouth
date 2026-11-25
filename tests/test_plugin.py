@@ -179,6 +179,59 @@ class Command(unittest.TestCase):
         )
         self.assertTrue((self.root / THEME).is_dir())
 
+    def bundle(self):
+        """A bundle made of the core checkout and this part: `material-boot core install --bundle` takes the core from lib/ and the part from parts/plymouth."""
+        core = LIB if (LIB / "material_boot").is_dir() else LIB.parent
+        b = Path(tempfile.mkdtemp(dir=self.tmp.name)) / "bundle"
+        (b / "lib").mkdir(parents=True)
+        (b / "parts/plymouth").mkdir(parents=True)
+        (b / "lib/material_boot").symlink_to(core / "material_boot")
+        for d in ("scripts", "assets", "bin"):
+            if not (core / d).exists():
+                self.skipTest(f"the core at {core} has no {d}/ to make a bundle of")
+            (b / d).symlink_to(core / d)
+        (b / "parts/plymouth/manifest.json").write_text((self.plugins / "plymouth.json").read_text())
+        return b
+
+    def test_the_unified_installer_installs_and_removes_the_part(self):
+        b = self.bundle()
+        rc, out = self.mg(
+            "core", "install", "--bundle", str(b), "--root", str(self.root), "--only", "plymouth", "--yes"
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertTrue((self.root / THEME / "material.script").is_file(), out)
+        self.assertEqual((self.root / "etc/plymouth/default-theme").read_text().strip(), "material")
+        state = json.loads((self.root / "var/lib/material-grub/state.json").read_text())
+        self.assertIn("plymouth", state["parts"], state)
+        rc, out = self.mg(
+            "core",
+            "install",
+            "--bundle",
+            str(b),
+            "--root",
+            str(self.root),
+            "--uninstall",
+            "--only",
+            "plymouth",
+            "--yes",
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertFalse((self.root / THEME).exists())
+        self.assertEqual((self.root / "etc/plymouth/default-theme").read_text().strip(), "bgrt")
+        self.assertNotIn("plymouth", json.loads((self.root / "var/lib/material-grub/state.json").read_text())["parts"])
+
+    def test_an_install_chosen_from_a_package_changes_nothing_about_the_boot(self):
+        b = self.bundle()
+        rc, out = self.mg("core", "install", "--bundle", str(b), "--root", str(self.root), "--only", "core", "--yes")
+        self.assertEqual(rc, 0, out)  # the core is there, as its own package would have put it
+        rc, out = self.mg(
+            "core", "install", "--bundle", str(b), "--root", str(self.root), "--only", "plymouth", "--from-package"
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertFalse((self.root / THEME).exists(), "the package did not turn the splash on")
+        self.assertIn("plymouth", json.loads((self.root / "var/lib/material-grub/state.json").read_text())["parts"])
+        self.assertNotIn("splash", (self.root / "etc/default/grub").read_text())
+
     def test_a_bad_option_is_a_usage_error_not_a_crash(self):
         rc, out = self.mg("plymouth", "apply", "--no-such-thing")
         self.assertNotEqual(rc, 0)
