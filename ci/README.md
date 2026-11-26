@@ -28,3 +28,7 @@ ci/xvfb_play.sh spinner build/xvfb/spinner 6 && python3 ci/check_frames.py --siz
 ```
 
 The material-grub ref: the `material_grub_ref` input of a manual run, else the repository variable `MATERIAL_GRUB_REF`, else the default in the workflow (the branch with the plugin API until it is merged into material-grub's `release/0.8.0`).
+
+## Animations
+
+`ci/record_gif.sh THEME OUT.gif [SECONDS] [WxH] [WIDTH]` plays a theme in real Plymouth (X11 renderer, Xvfb) and records the screen with ffmpeg's `x11grab` (lossless first, then one palette for the whole clip: steady colours). `scripts/make_animations.py OUTDIR` builds every style the way `material-boot plymouth build` does and records it. The recordings in the README are in `docs/animations/`; `tests/test_animations.py` checks that each is a real animation (frames, motion, size, weight) and the CI job `animations` does it for the committed files and for a fresh run, whose GIFs are the job's artifact (copy them over `docs/animations` to refresh).

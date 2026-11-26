@@ -219,6 +219,38 @@ jobs:
         if: always()
         with: {name: "qemu-${{ matrix.name }}-screenshots", path: "build/qemu/shots/\nbuild/qemu/handover/"}
 
+  animations:
+    # The recordings in the README (docs/animations/*.gif): every style is built, PLAYED in real Plymouth (the X11 renderer under Xvfb) and recorded with ffmpeg,
+    # and each recording must be a real animation (many frames, the picture changes), of the right size and small. The committed recordings get the same checks.
+    # The fresh ones are an artifact: to refresh the repository, copy them over docs/animations.
+    name: Animations (every style played and recorded)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
+      - run: sudo apt-get update
+      - run: sudo env INITRD=No DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plymouth plymouth-theme-spinner plymouth-x11 xvfb ffmpeg python3-pil librsvg2-bin
+      - name: Build the core's shared data
+        run: python3 material-boot-core/scripts/build_data.py --out material-boot-core-data
+      - name: The committed recordings are animations
+        run: python3 tests/test_animations.py
+      - name: Play and record every style
+        run: python3 scripts/make_animations.py build/animations
+        env:
+          MATERIAL_LIB: ${{ github.workspace }}/material-boot-core
+          MATERIAL_DATA: ${{ github.workspace }}/material-boot-core-data
+      - name: The fresh recordings are animations too
+        run: python3 tests/test_animations.py
+        env:
+          ANIMATIONS_DIR: ${{ github.workspace }}/build/animations
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: animations, path: build/animations/}
+
   package:
     # Phase 6: the three package formats, built from this checkout in a distro container and exercised (ci/package-test.sh): the package holds the code, the
     # entry file, the hook and the plugin manifest where material-grub looks, and nothing prebuilt; installing it changes NOTHING about how the system
@@ -249,7 +281,7 @@ jobs:
   ci-ok:
     # one name for branch protection to require
     name: CI passed
-    needs: [lint, unit, xvfb, probe, initramfs, qemu, package]
+    needs: [lint, unit, xvfb, animations, probe, initramfs, qemu, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
