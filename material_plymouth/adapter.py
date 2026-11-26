@@ -1,14 +1,15 @@
-"""The ONLY place material-plymouth reaches into material-grub (plan: it is written as the future shared-library API, so extracting it later is a move).
+"""The ONLY place material-plymouth reaches into the shared code: material-boot-core (the library material-grub uses as well).
 
-What it uses of material-grub, and nothing else:
-  mgrub        conf (`load_conf`), title parsing (`parse_title`), the catalog matching rules (`key_for`)
+What it uses of the core, and nothing else (the names are the ones material-grub's own modules had, so the rest of this part did not change):
+  mgrub        conf (`load_conf`, `CONF_DEFAULTS`, `CONF_CHOICES`), title parsing (`parse_title`), the catalog matching rules (`key_for`, `load_rules`)
   mgoverrides  overrides.json (`load`)
   mgcustom     `apply`: the one function that turns overrides into a colour, name and icon per entry. Plymouth calls the SAME function GRUB does, so the
                two cannot disagree about what the booted distro looks like.
   mgscenes     `Renderer`: palettes, glyphs, fonts and the drawing primitives, so the pixels come from the same code too.
+  pkg          the shared data the core built for the configured scheme (palettes.json, classes.json, glyphs/, fonts/, ...)
 
-Finding material-grub: $MATERIAL_GRUB (a checkout: install/bin and dist/material-grub, or $MATERIAL_PKG for the package directory), else an installed one
-(/usr/share/material-grub, or /var/lib/material-grub/pkg on an immutable system).
+Finding the core: the dispatcher hands over the running one (`attach`); else $MATERIAL_LIB (the directory that holds the material_boot package; the data is
+$MATERIAL_DATA, else `data` next to it), else /usr/share/material-boot (packages, installer) and its two other places.
 """
 
 import json
@@ -27,44 +28,98 @@ class CoreNotFound(Exception):
     pass
 
 
+MIN_CORE = (1, 0, 0)
+CORE_API = 2
+SYSTEM_LIBS = ("/usr/share/material-boot/lib", "/usr/local/share/material-boot/lib", "/var/lib/material-boot/lib")
+
+
 def candidates():
-    """[(bin dir, package dir)] in the order they are tried."""
+    """[(lib dir, data dir)] in the order they are tried: $MATERIAL_LIB (the directory that holds the material_boot package) and nothing else when it is set,
+    else where the packages and the installer put the core. The data is $MATERIAL_DATA, else `data` next to the library, else where the installer builds it
+    (a library that is only a bundle's or a checkout's has no data next to it)."""
+    env = os.environ.get("MATERIAL_LIB")
+    libs = [Path(env)] if env else [Path(p) for p in SYSTEM_LIBS]
+    data = os.environ.get("MATERIAL_DATA")
     out = []
-    env = os.environ.get("MATERIAL_GRUB")
-    if env:
-        root = Path(env)
-        out.append((root / "install/bin", Path(os.environ.get("MATERIAL_PKG") or root / "dist/material-grub")))
-    for p in ("/usr/share/material-grub", "/var/lib/material-grub/pkg"):
-        out.append((Path(p) / "bin", Path(p)))
+    for lib in libs:
+        want = (
+            [Path(data)]
+            if data
+            else [
+                lib.parent / "data",
+                Path("/usr/share/material-boot/data"),
+                Path("/usr/local/share/material-boot/data"),
+            ]
+        )
+        found = next((d for d in want if (d / "palettes.json").is_file()), want[0])
+        out.append((lib, found))
     return out
+
+
+def _version(text):
+    return tuple(int(x) for x in re.findall(r"\d+", text)[:3])
+
+
+def _load(lib, data):
+    """The core's modules as one object: .mgrub (conf and title rules) .mgoverrides .mgcustom .mgscenes .pkg (the shared data), .lib, .version."""
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    import material_boot
+    from material_boot import conf, custom, overrides, scenes, titles
+
+    if getattr(material_boot, "CORE_API", None) != CORE_API:
+        raise CoreNotFound(
+            f"material-boot-core at {lib} has plugin API {getattr(material_boot, 'CORE_API', '?')}, this part is written for {CORE_API}"
+        )
+    if _version(material_boot.__version__) < MIN_CORE:
+        raise CoreNotFound(
+            f"material-boot-core {material_boot.__version__} at {lib} is older than {'.'.join(map(str, MIN_CORE))}"
+        )
+    mgrub = SimpleNamespace(
+        load_conf=conf.load_conf,
+        CONF_DEFAULTS=conf.CONF_DEFAULTS,
+        CONF_CHOICES=conf.CONF_CHOICES,
+        load_rules=titles.load_rules,
+        key_for=titles.key_for,
+        parse_title=titles.parse_title,
+    )
+    return SimpleNamespace(
+        mgrub=mgrub,
+        mgoverrides=overrides,
+        mgcustom=custom,
+        mgscenes=scenes,
+        pkg=Path(data),
+        lib=Path(lib),
+        version=material_boot.__version__,
+    )
 
 
 _core = None
 
 
+def attach(core_obj):
+    """Use the core that is running this command (the dispatcher hands it over: `core.lib`, `core.data`), instead of searching."""
+    global _core
+    lib, data = getattr(core_obj, "lib", None), getattr(core_obj, "data", None)
+    if lib and data and (Path(data) / "palettes.json").is_file():
+        _core = _load(lib, data)
+    return _core
+
+
 def core(refresh=False):
-    """material-grub's modules and package directory as one object: .mgrub .mgoverrides .mgcustom .mgscenes .pkg. Raises CoreNotFound with the reason."""
+    """material-boot-core's modules and shared data as one object: .mgrub .mgoverrides .mgcustom .mgscenes .pkg. Raises CoreNotFound with the reason."""
     global _core
     if _core is not None and not refresh:
         return _core
     tried = []
-    for bindir, pkg in candidates():
-        if (bindir / "mgscenes.py").is_file() and (pkg / "palettes.json").is_file():
-            if str(bindir) not in sys.path:
-                sys.path.insert(0, str(bindir))
-            import mgcustom
-            import mgoverrides
-            import mgrub
-            import mgscenes
-
-            _core = SimpleNamespace(
-                mgrub=mgrub, mgoverrides=mgoverrides, mgcustom=mgcustom, mgscenes=mgscenes, pkg=pkg, bin=bindir
-            )
+    for lib, data in candidates():
+        if (lib / "material_boot/scenes.py").is_file() and (data / "palettes.json").is_file():
+            _core = _load(lib, data)
             return _core
-        tried.append(f"{bindir} + {pkg}")
+        tried.append(f"{lib} + {data}")
     raise CoreNotFound(
-        "material-grub is not installed (or no package is built): looked in "
-        + ", ".join(tried or ["nothing (set MATERIAL_GRUB)"])
+        "material-boot-core is not installed (or its shared data is not built: `material-boot core apply`): looked in "
+        + ", ".join(tried or ["nothing (set MATERIAL_LIB)"])
     )
 
 

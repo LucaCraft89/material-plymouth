@@ -4,8 +4,12 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      material_core_ref:
+        description: "material-boot-core branch, tag or commit to test against (empty: the default below)"
+        required: false
+        default: ""
       material_grub_ref:
-        description: "material-grub branch, tag or commit to test against (empty: the default below)"
+        description: "material-grub branch, tag or commit for the hand-over test (empty: the default below)"
         required: false
         default: ""
 permissions: {contents: read}
@@ -14,10 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # This part plugs into material-grub (its plugin API and the shared conf keys). The ref it is tested against: the run's input, else the repository
-  # variable MATERIAL_GRUB_REF, else the branch that has the plugin API until it is merged into material-grub's release/0.8.0 (then change it to that,
-  # and to a tag once there is one).
-  MATERIAL_GRUB_REF: ${{ inputs.material_grub_ref || vars.MATERIAL_GRUB_REF || 'feat/plymouth-contract' }}
+  # This part plugs into material-boot-core (its plugin API, the shared code and the shared conf keys). The ref it is tested against: the run's input, else
+  # the repository variable MATERIAL_CORE_REF, else the branch that has what this part needs until it is merged (then change it to main, and to a tag once
+  # there is one). material-grub is needed by one job only, the hand-over test, which boots GRUB with its theme: MATERIAL_GRUB_REF the same way.
+  MATERIAL_CORE_REF: ${{ inputs.material_core_ref || vars.MATERIAL_CORE_REF || 'feat/ctx-json' }}
+  MATERIAL_GRUB_REF: ${{ inputs.material_grub_ref || vars.MATERIAL_GRUB_REF || 'release/0.8.0' }}
 
 jobs:
   lint:
@@ -33,53 +38,32 @@ jobs:
 
   unit:
     name: Unit tests (Python ${{ matrix.python }})
-    # Python 3.8 is the oldest Python the material-grub tools run on (RHEL 8 family), 3.13 the newest in use. Pinned to 24.04: `ubuntu-latest` is 26.04
-    # now, which has no Python 3.8 for setup-python.
+    # Python 3.9 is the oldest Python material-boot-core runs on, 3.13 the newest in use. The suite includes the pixel-identity tests against the shared renderer
+    # (the Plymouth scene's pictures are the ones GRUB's own code draws) and every customisation reaching them (colours, one seed colour, names, icons, COOKIE,
+    # LOGO, sizes). Pinned to 24.04: `ubuntu-latest` is 26.04 now.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.8", "3.13"]
+        python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: LucaCraft89/material-grub
-          ref: ${{ env.MATERIAL_GRUB_REF }}
-          path: material-grub
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python }}"}
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends librsvg2-bin
       - run: pip install pillow pyyaml
+      - name: Build the core's shared data (the palettes, glyphs and fonts both themes read)
+        run: python3 material-boot-core/scripts/build_data.py --out material-boot-core-data
       - run: python -m unittest discover -s tests -v
         env:
-          MATERIAL_GRUB: ${{ github.workspace }}/material-grub
-          REQUIRE_CONTRACT: "1"      # a missing or incompatible material-grub is a failure here, not a skip
-
-  consistency:
-    # Tier 1 of the plan, the part that needs material-grub's built package: the Plymouth scene's pictures are pixel-identical to GRUB's own drawing,
-    # and every customisation (colours, one seed colour, names, icons, COOKIE, LOGO, sizes) reaches them. Builds the package from the material-grub ref
-    # (about a minute); REQUIRE_CORE makes a missing package a failure here instead of a skip.
-    name: Consistency with GRUB (built package)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: LucaCraft89/material-grub
-          ref: ${{ env.MATERIAL_GRUB_REF }}
-          path: material-grub
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common
-      - name: Build material-grub's package (sources only, like its own CI)
-        working-directory: material-grub
-        run: |
-          python3 -m venv --system-site-packages .venv
-          .venv/bin/pip install --require-hashes -r requirements.txt
-          .venv/bin/python scripts/package.py --res 1920x1080
-      - run: material-grub/.venv/bin/pip install pyyaml
-      - run: material-grub/.venv/bin/python -m unittest discover -s tests -v
-        env:
-          MATERIAL_GRUB: ${{ github.workspace }}/material-grub
-          REQUIRE_CONTRACT: "1"
+          MATERIAL_LIB: ${{ github.workspace }}/material-boot-core
+          MATERIAL_DATA: ${{ github.workspace }}/material-boot-core-data
+          REQUIRE_CONTRACT: "1"      # a missing or incompatible core is a failure here, not a skip
           REQUIRE_CORE: "1"
 
   xvfb:
@@ -94,23 +78,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: LucaCraft89/material-grub
-          ref: ${{ env.MATERIAL_GRUB_REF }}
-          path: material-grub
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
       - run: sudo apt-get update
       - run: sudo env INITRD=No DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plymouth plymouth-theme-spinner plymouth-x11 xvfb imagemagick bc xdotool python3-pil librsvg2-bin grub-common
-      - name: Build material-grub's package (sources only, like its own CI)
-        working-directory: material-grub
-        run: |
-          python3 -m venv --system-site-packages .venv
-          .venv/bin/pip install --require-hashes -r requirements.txt
-          .venv/bin/python scripts/package.py --res 1920x1080
+      - name: Build the core's shared data (the palettes, glyphs and fonts both themes read)
+        run: python3 material-boot-core/scripts/build_data.py --out material-boot-core-data
       - run: ci/xvfb_play.sh spinner build/xvfb/spinner 6
       - run: python3 ci/check_frames.py --size 1920x1080 --moving build/xvfb/spinner-*.png
       - name: The Material theme, played
-        run: material-grub/.venv/bin/python -m unittest discover -s tests -p "test_theme_play.py" -v
+        run: python3 -m unittest discover -s tests -p "test_theme_play.py" -v
         env:
-          MATERIAL_GRUB: ${{ github.workspace }}/material-grub
+          MATERIAL_LIB: ${{ github.workspace }}/material-boot-core
+          MATERIAL_DATA: ${{ github.workspace }}/material-boot-core-data
+          REQUIRE_CONTRACT: "1"
           REQUIRE_CORE: "1"
           REQUIRE_PLAY: "1"
           PLAY_SHOTS: ${{ github.workspace }}/build/play-shots
@@ -152,7 +134,7 @@ jobs:
 
   initramfs:
     # Tier 3 of the plan: apply and remove against a REAL initramfs. A fresh container per distro gets Plymouth, the distro's initramfs tool (dracut,
-    # initramfs-tools or mkinitcpio), a real kernel and the material-grub package; ci/initramfs_e2e.py then applies the theme, lists the image with the
+    # initramfs-tools or mkinitcpio), a real kernel and the core's library and data (the checkout and `build_data.py`); ci/initramfs_e2e.py then applies the theme, lists the image with the
     # distro's own lister (the theme, the script plugin and the pictures must be inside, the script byte-identical), applies again (--if-changed does
     # nothing), forces two failures (the tool fails; the tool writes broken images: everything must be byte-identical afterwards) and removes it again.
     name: Real initramfs (${{ matrix.name }})
@@ -170,18 +152,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: LucaCraft89/material-grub
-          ref: ${{ env.MATERIAL_GRUB_REF }}
-          path: material-grub
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common
-      - name: Build material-grub's package
-        working-directory: material-grub
-        run: |
-          python3 -m venv --system-site-packages .venv
-          .venv/bin/pip install --require-hashes -r requirements.txt
-          .venv/bin/python scripts/package.py --res 1920x1080
+      - name: Build the core's shared data (the palettes, glyphs and fonts both themes read)
+        run: python3 material-boot-core/scripts/build_data.py --out material-boot-core-data
       - name: Apply and remove against a real initramfs
-        run: docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" "${{ matrix.image }}" sh /w/ci/initramfs-e2e.sh
+        run: docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-boot-core:/core:ro" -v "$PWD/material-boot-core-data:/core-data:ro" "${{ matrix.image }}" sh /w/ci/initramfs-e2e.sh
 
   qemu:
     # Tier 4 of the plan: the theme in REAL Plymouth on a REAL initramfs, booted, on each distro (Plymouth 22.x on openSUSE, 24.x on Debian and Ubuntu, 26.x
@@ -205,6 +183,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
+          repository: LucaCraft89/material-boot-core
+          ref: ${{ env.MATERIAL_CORE_REF }}
+          path: material-boot-core
+      - uses: actions/checkout@v4
+        with:
           repository: LucaCraft89/material-grub
           ref: ${{ env.MATERIAL_GRUB_REF }}
           path: material-grub
@@ -214,16 +197,20 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm || echo "no KVM: QEMU falls back to software emulation (slower, still works)"
-      - name: Build material-grub's package
+      - name: Build the core's shared data (the palettes, glyphs and fonts both themes read)
+        run: python3 material-boot-core/scripts/build_data.py --out material-boot-core-data
+      - name: Build material-grub's package for the hand-over test (GRUB's own theme, to compare the colours with)
         working-directory: material-grub
         run: |
           python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --require-hashes -r requirements.txt
           .venv/bin/python scripts/package.py --res 1280x720
+        env:
+          MATERIAL_LIB: ${{ github.workspace }}/material-boot-core
       - name: Apply the theme in a ${{ matrix.name }} container and build the test initramfs
         run: |
           mkdir -p build/qemu
-          docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" -v "$PWD/build/qemu:/out" "${{ matrix.image }}" sh /w/ci/qemu/prepare.sh
+          docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-boot-core:/core:ro" -v "$PWD/material-boot-core-data:/core-data:ro" -v "$PWD/build/qemu:/out" "${{ matrix.image }}" sh /w/ci/qemu/prepare.sh
       - name: Boot it and look at the screen
         run: python3 ci/qemu/boot.py build/qemu/vmlinuz build/qemu/initrd.img build/qemu/shots --timeout 900
       - name: The hand-over - GRUB (UEFI, the Material theme) boots the entry, then Plymouth takes over
@@ -253,7 +240,7 @@ jobs:
   ci-ok:
     # one name for branch protection to require
     name: CI passed
-    needs: [lint, unit, consistency, xvfb, probe, initramfs, qemu, package]
+    needs: [lint, unit, xvfb, probe, initramfs, qemu, package]
     if: always()
     runs-on: ubuntu-latest
     steps:

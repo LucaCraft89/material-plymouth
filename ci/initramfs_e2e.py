@@ -112,7 +112,7 @@ class Machine:
 
 
 class Core:
-    """What material-grub's plugin loader hands a plugin, reduced to what material-plymouth uses."""
+    """What the core's plugin loader hands a plugin, reduced to what material-plymouth uses."""
 
     @staticmethod
     def say(*a):
@@ -128,7 +128,7 @@ class Core:
 
 
 def run(*argv):
-    """`material-grub plymouth <argv>` -> (exit code, output)."""
+    """`material-boot plymouth <argv>` -> (exit code, output)."""
     buf = io.StringIO()
     with redirect_stdout(buf):
         try:
@@ -167,7 +167,7 @@ def main():
     try:
         adapter.core()
     except adapter.CoreNotFound as e:
-        check(False, "material-grub is found", str(e))
+        check(False, "material-boot-core is found", str(e))
         return 1
 
     # ---- 1 baseline: the distro's own initramfs

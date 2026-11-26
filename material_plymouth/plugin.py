@@ -1,4 +1,4 @@
-"""`material-grub plymouth ...`: the command-line front end of this part, run by material-grub's plugin dispatcher (docs/plugins.md in material-grub).
+"""`material-boot plymouth ...` (and `material-grub plymouth ...`): the command-line front end of this part, run by the core's plugin dispatcher (docs/plugins.md in material-boot-core).
 
     apply [--yes] [--dry-run] [--if-changed] [--no-cmdline]   render the theme, install it, make it the default, rebuild the initramfs (undone on any failure)
     remove [--yes] [--dry-run]                                 take it all out again
@@ -21,7 +21,7 @@ from .system import System
 
 
 def _parser():
-    p = argparse.ArgumentParser(prog="material-grub plymouth", description="The Material Plymouth boot splash.")
+    p = argparse.ArgumentParser(prog="material-boot plymouth", description="The Material Plymouth boot splash.")
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("apply", help="render, install and enable the theme")
     a.add_argument(
@@ -97,6 +97,7 @@ def _print(res, say):
 def main(argv, core):
     args = _parser().parse_args(argv)
     say = core.say
+    adapter.attach(core)  # the core that is running this command is the one to use
     root = getattr(args, "root", "")
     system = System(root)
     if args.cmd == "status":
@@ -178,12 +179,17 @@ def _run_ok(system, cmd):
 
 
 def _report(res):
-    """The same box, journal line and `wall` as material-grub's own rollbacks, and last-error for `material-grub doctor`."""
-    try:
-        c = adapter.core()
-        sys.path.insert(0, str(c.bin))
-        import mgsafe
+    """The same box, journal line and `wall` as material-grub's own rollbacks, and last-error for `material-grub doctor`: material-grub's `mgsafe` does that
+    and is only there when material-grub is installed (this part works without it, and then says it on its own output only)."""
+    for d in ("/usr/share/material-grub/bin", "/var/lib/material-grub/pkg/bin"):
+        if (Path(d) / "mgsafe.py").is_file():
+            try:
+                sys.path.insert(0, d)
+                import mgsafe
 
-        mgsafe.report_failure("the Plymouth theme could not be applied; everything was put back", res.messages[:3])
-    except Exception:
-        pass
+                mgsafe.report_failure(
+                    "the Plymouth theme could not be applied; everything was put back", res.messages[:3]
+                )
+            except Exception:
+                pass
+            return
