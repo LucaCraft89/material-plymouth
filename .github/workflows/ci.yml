@@ -188,7 +188,8 @@ jobs:
     # on Fedora and Arch; dracut, initramfs-tools and mkinitcpio). ci/qemu/prepare.sh runs `plymouth apply` in a distro container (real kernel, real tool)
     # and builds a test initramfs the same way with one extra early hook; ci/qemu/boot.py boots kernel + initramfs in QEMU (KVM on the runner), drives
     # the screen through the serial port and QMP, and checks: plymouthd lives, the splash is drawn and moves, the disk-password prompt shows dots as keys are
-    # typed and the typed password reaches the asker, shutdown mode shows its message. Screenshots are an artifact.
+    # typed and the typed password reaches the asker, shutdown mode shows its message. Then ci/qemu/handover.py boots the same kernel and initramfs through GRUB
+    # under UEFI (OVMF) with the Material GRUB theme: the menu is themed, and after Enter the splash has the same resolution and the same colours. Screenshots are an artifact.
     name: Boot in QEMU (${{ matrix.name }})
     runs-on: ubuntu-24.04
     strategy:
@@ -207,7 +208,7 @@ jobs:
           repository: LucaCraft89/material-grub
           ref: ${{ env.MATERIAL_GRUB_REF }}
           path: material-grub
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common qemu-system-x86
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common grub-efi-amd64-bin ovmf qemu-system-x86
       - name: Let QEMU use KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -218,16 +219,18 @@ jobs:
         run: |
           python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --require-hashes -r requirements.txt
-          .venv/bin/python scripts/package.py --res 1920x1080
+          .venv/bin/python scripts/package.py --res 1280x720
       - name: Apply the theme in a ${{ matrix.name }} container and build the test initramfs
         run: |
           mkdir -p build/qemu
           docker run --rm -v "$PWD:/w:ro" -v "$PWD/material-grub:/mg:ro" -v "$PWD/build/qemu:/out" "${{ matrix.image }}" sh /w/ci/qemu/prepare.sh
       - name: Boot it and look at the screen
         run: python3 ci/qemu/boot.py build/qemu/vmlinuz build/qemu/initrd.img build/qemu/shots --timeout 900
+      - name: The hand-over - GRUB (UEFI, the Material theme) boots the entry, then Plymouth takes over
+        run: python3 ci/qemu/handover.py material-grub build/qemu/vmlinuz build/qemu/initrd.img build/qemu/os-release build/qemu/handover --size 1280x720 --timeout 900
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: "qemu-${{ matrix.name }}-screenshots", path: build/qemu/shots/}
+        with: {name: "qemu-${{ matrix.name }}-screenshots", path: "build/qemu/shots/\nbuild/qemu/handover/"}
 
   ci-ok:
     # one name for branch protection to require

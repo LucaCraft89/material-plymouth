@@ -49,6 +49,10 @@ kver=$(ls /lib/modules | head -n1)
 echo "initramfs tool: $tool"
 
 cd /w
+if [ -n "${STOCK_THEME:-}" ]; then
+  # an experiment: boot one of the distro's own themes instead of ours, to tell a problem of the theme from one of Plymouth, the kernel or the display
+  plymouth-set-default-theme "$STOCK_THEME" 2>/dev/null || { update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "/usr/share/plymouth/themes/$STOCK_THEME/$STOCK_THEME.plymouth" 50 && update-alternatives --set default.plymouth "/usr/share/plymouth/themes/$STOCK_THEME/$STOCK_THEME.plymouth"; }
+else
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "/w")
@@ -59,6 +63,7 @@ class Core:
     elevate = staticmethod(lambda *a: None)
 sys.exit(plugin.main(["apply", "--yes"], Core()))
 PY
+fi
 
 kernel_file=""
 for f in "/lib/modules/$kver/vmlinuz" "/boot/vmlinuz-$kver" "/boot/vmlinuz"; do [ -f "$f" ] && kernel_file=$f && break; done
@@ -93,5 +98,6 @@ case $tool in
     lsinitcpio /out/initrd.img | grep -E "themes/material/material.script|plymouth/script.so|plymouth/label|hooks/mgtest"
     ;;
 esac
-chmod 644 /out/initrd.img /out/vmlinuz
+cp /etc/os-release /out/os-release  # the GRUB entry of the hand-over test is titled like this system
+chmod 644 /out/initrd.img /out/vmlinuz /out/os-release
 echo "kernel $kver, initramfs $(stat -c %s /out/initrd.img) bytes"

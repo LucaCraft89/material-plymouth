@@ -209,6 +209,20 @@ fun bar(t) {
 bar(0);""")
     # ---- refresh: the staggered animation
     body = ["  frame++; t = frame / " + str(FPS) + ";"]
+    # A display that is attached after the first paint (a hand-over from the firmware's framebuffer to a DRM driver) may only get the dirty rectangles after
+    # that, so the scene shows on black (seen on Ubuntu 24.04 under UEFI). Setting the background colour makes the script plugin repaint the whole screen:
+    # done once a second for the first twenty seconds, then never again.
+    body.append(
+        "  if (frame <= "
+        + str(FPS * 20)
+        + " && frame % "
+        + str(FPS)
+        + " == 0) { Window.SetBackgroundTopColor("
+        + sc
+        + "); Window.SetBackgroundBottomColor("
+        + sc
+        + "); }"
+    )
     if cad["rate"]:
         body.append("  k = frame % RATE; if (k < rot_n) place_rot(k, t);")
     if cad["pulse"] and "card" in pl["pics"]:
@@ -222,7 +236,7 @@ bar(0);""")
         body.append("  if (frame % BAR_EVERY == 0) bar(t);")
     elif pl["bar_mode"] == "progress":
         body.append("  if (frame % 6 == 0) bar(t);  # motion off: the fill still follows the boot, nothing else moves")
-    if len(body) > 1:
+    if len(body) > 1:  # always true now: the repaint above is in every refresh
         a("fun refresh() {\n" + "\n".join(body) + "\n}\nPlymouth.SetRefreshFunction(refresh);")
     # ---- messages and the disk password prompt
     sx, sy = pl["slot"]
