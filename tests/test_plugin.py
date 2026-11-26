@@ -102,6 +102,15 @@ class Command(unittest.TestCase):
         rows = [r for r in json.loads(out) if r["check"] == "plugin plymouth"]
         self.assertEqual([r["status"] for r in rows], ["ok"], rows)
 
+    def test_preview_writes_a_still_of_each_screen(self):
+        from PIL import Image
+
+        for screen in ("boot", "password", "shutdown"):
+            out = self.root / f"{screen}.png"
+            rc, text = self.mg("plymouth", "preview", screen, str(out), "--size", "640x360", "--root", str(self.root))
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(Image.open(out).size, (640, 360), screen)
+
     def test_status(self):
         rc, out = self.mg("plymouth", "status", "--json", "--root", str(self.root))
         self.assertEqual(rc, 0, out)

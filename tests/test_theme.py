@@ -192,3 +192,46 @@ class Sizes(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Preview(unittest.TestCase):
+    """The stills the GUI shows: the real layers at the real positions, one per screen."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = support.core()
+
+    def look(self, **conf):
+        from material_plymouth import adapter
+
+        c = dict(self.c.mgrub.CONF_DEFAULTS, **conf)
+        return adapter.look(c, dict(self.c.mgoverrides.DEFAULTS), adapter.parse_os_release(support.FEDORA), height=720)
+
+    def test_each_screen_has_the_size_and_is_not_flat(self):
+        from PIL import ImageStat
+
+        shots = {s: theme.preview(self.look(), 1280, 720, s) for s in ("boot", "password", "shutdown")}
+        for s, im in shots.items():
+            self.assertEqual(im.size, (1280, 720), s)
+            self.assertGreater(max(ImageStat.Stat(im).stddev), 5, f"{s} is drawn")
+        a, b, c = shots["boot"], shots["password"], shots["shutdown"]
+        self.assertNotEqual(a.tobytes(), b.tobytes())
+        self.assertNotEqual(a.tobytes(), c.tobytes())
+        self.assertNotEqual(b.tobytes(), c.tobytes())
+
+    def test_the_password_screen_shows_the_field_and_no_bar(self):
+        im = theme.preview(self.look(), 1280, 720, "password")
+        field = self.c.mgscenes.hexc(self.look().palette["surfaceContainerHigh"])
+        self.assertIn(tuple(field), set(im.getdata()), "the field's colour is on screen")
+
+    def test_the_style_and_the_bar_change_the_picture(self):
+        a = theme.preview(self.look(STYLE="rail"), 1280, 720, "boot")
+        b = theme.preview(self.look(STYLE="list"), 1280, 720, "boot")
+        self.assertNotEqual(a.tobytes(), b.tobytes())
+        p = theme.preview(self.look(), 1280, 720, "boot", bar="progress")
+        i = theme.preview(self.look(), 1280, 720, "boot", bar="indeterminate")
+        self.assertNotEqual(p.tobytes(), i.tobytes(), "the progress bar is drawn longer")
+
+    def test_an_unknown_screen_is_an_error(self):
+        with self.assertRaises(ValueError):
+            theme.preview(self.look(), 1280, 720, "nope")
