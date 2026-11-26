@@ -119,8 +119,13 @@ class System:
             )
             return rc == 0, out.strip()
         if self.which("update-alternatives"):
+            if previous and previous.endswith(f"/{THEME_NAME}/{THEME_NAME}.plymouth"):
+                # a second apply that failed: ours was already the default, and removing the alternative would drop Plymouth back to the distro's theme
+                # (found by the real-initramfs tier on Ubuntu)
+                rc, out = self.run(["update-alternatives", "--set", "default.plymouth", previous])
+                return rc == 0, out.strip()
             rc, out = self.run(["update-alternatives", "--remove", "default.plymouth", theme_file])
-            if rc == 0 and previous and not previous.endswith("/material/material.plymouth"):
+            if rc == 0 and previous:
                 rc, out = self.run(["update-alternatives", "--set", "default.plymouth", previous])
             return rc == 0, out.strip()
         return False, "no tool to reset the default theme"
