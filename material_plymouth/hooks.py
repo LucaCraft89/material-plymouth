@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from . import adapter, apply
-from .system import System
+from .system import THEME_NAME, System
 
 SRC = (
     Path(__file__).resolve().parent.parent
@@ -26,6 +26,11 @@ NOT_ASKED = (
     "the part is installed; turning the boot splash on is your own step, because it rebuilds the initramfs and may edit the kernel command line: "
     "material-boot plymouth apply"
 )
+
+
+def is_ours(default):
+    """`plymouth-set-default-theme` says the name, `update-alternatives` (Debian, Ubuntu) the path of the .plymouth file."""
+    return default == THEME_NAME or str(default).rstrip("/").endswith(f"/{THEME_NAME}/{THEME_NAME}.plymouth")
 
 
 def _system(ctx):
@@ -198,8 +203,8 @@ def hook_verify(ctx):
     problems = []
     if not st["installed"]:
         problems.append("the theme was applied but its directory is missing")
-    if st["default_theme"] != "material":
-        problems.append(f"the default Plymouth theme is {st['default_theme']!r}, not 'material'")
+    if not is_ours(st["default_theme"]):
+        problems.append(f"the default Plymouth theme is {st['default_theme']!r}, not '{THEME_NAME}'")
     return problems
 
 
@@ -236,7 +241,7 @@ def hook_doctor(ctx):
         out.append(("ok", f"theme applied {s.get('applied_at')} ({s.get('style')} style, {s.get('size')})"))
         if not st["installed"]:
             out.append(("fail", "the theme directory is missing although the theme was applied"))
-        if st["default_theme"] != "material":
+        if not is_ours(st["default_theme"]):
             out.append(("warn", f"the default theme is {st['default_theme']!r}, not 'material'"))
     else:
         out.append(("info", "the theme is not applied (material-boot plymouth apply)"))

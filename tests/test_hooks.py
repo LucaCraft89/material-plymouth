@@ -205,6 +205,26 @@ class VerifyUninstallDoctor(Base):
         (self.root / "etc/plymouth/default-theme").write_text("spinner")
         self.assertTrue(any("spinner" in p for p in hooks.hook_verify(self.ctx())))
 
+    def test_the_default_theme_is_ours_by_name_or_by_the_path_update_alternatives_gives(self):
+        for ours in ("material", "/usr/share/plymouth/themes/material/material.plymouth"):
+            self.assertTrue(hooks.is_ours(ours), ours)
+        for other in (
+            None,
+            "spinner",
+            "/usr/share/plymouth/themes/spinner/spinner.plymouth",
+            "/x/material-old/material-old.plymouth",
+        ):
+            self.assertFalse(hooks.is_ours(other), other)
+
+    def test_a_debian_family_machine_verifies_too(self):
+        """update-alternatives reports a path, not a name: the first run of the bundle test on Ubuntu failed on it."""
+        self.fs = fakes.ubuntu(self.root / "u")
+        (self.root / "u/etc").mkdir(exist_ok=True)
+        (self.root / "u/etc/os-release").write_text(FEDORA)
+        ctx = self.ctx(root=str(self.root / "u"))
+        hooks.hook_install(ctx)
+        self.assertEqual(hooks.hook_verify(ctx), [])
+
     def test_a_missing_theme_directory_is_reported(self):
         hooks.hook_install(self.ctx())
         import shutil
