@@ -21,19 +21,19 @@ fi
 if command -v dnf >/dev/null 2>&1; then
   # the kernel's own scriptlets would build an initramfs through kernel-install; we build it ourselves, so they are skipped
   dnf -y install --setopt=tsflags=noscripts kernel-core >/dev/null
-  dnf -y install findutils plymouth plymouth-plugin-script plymouth-scripts dracut python3 python3-pillow kmod >/dev/null
+  dnf -y install findutils plymouth plymouth-plugin-script plymouth-plugin-label plymouth-scripts dracut python3 python3-pillow kmod >/dev/null
 elif command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive INITRD=No
   apt-get update >/dev/null
   case $ID in ubuntu) kernel=linux-image-virtual ;; *) kernel=linux-image-amd64 ;; esac
-  apt-get install -y --no-install-recommends initramfs-tools plymouth plymouth-themes python3 python3-pil kmod "$kernel" >/dev/null
+  apt-get install -y --no-install-recommends initramfs-tools plymouth plymouth-label plymouth-themes python3 python3-pil kmod "$kernel" >/dev/null
 elif command -v pacman >/dev/null 2>&1; then
   # the container has no real disk: no space check; the kernel package's hooks would run mkinitcpio, so only the files are wanted
   pacman -Syu --noconfirm --needed --disable-sandbox >/dev/null 2>&1 || pacman -Syu --noconfirm --needed >/dev/null
   pacman -S --noconfirm --needed plymouth mkinitcpio python python-pillow kmod linux >/dev/null 2>&1 || pacman -S --noconfirm --needed plymouth mkinitcpio python python-pillow kmod linux
 elif command -v zypper >/dev/null 2>&1; then
   zypper --non-interactive --gpg-auto-import-keys refresh >/dev/null
-  zypper --non-interactive install --no-recommends findutils plymouth plymouth-plugin-script plymouth-scripts plymouth-dracut dracut python3 python3-Pillow kmod kernel-default-base >/dev/null
+  zypper --non-interactive install --no-recommends findutils plymouth plymouth-plugin-script plymouth-plugin-label plymouth-plugin-label-ft plymouth-scripts plymouth-dracut dracut python3 python3-Pillow kmod kernel-default-base >/dev/null
 else
   echo "no known package manager"; exit 1
 fi

@@ -45,7 +45,7 @@ def theme_listing(fs, hook_ok=True):
     lines = ["usr/bin/plymouth", "usr/lib64/plymouth/text.so"]
     theme = fs.p("usr/share/plymouth/themes/material")
     if hook_ok and theme.is_dir():
-        lines += ["usr/lib64/plymouth/script.so"] + [
+        lines += ["usr/lib64/plymouth/script.so", "usr/lib64/plymouth/label-freetype.so"] + [
             f"usr/share/plymouth/themes/material/{f.name}" for f in sorted(theme.iterdir()) if f.is_file()
         ]
     return lines
@@ -132,6 +132,7 @@ def base_root(root, kernels=("6.1.0", "6.2.0")):
     root = Path(root)
     (root / "usr/lib64/plymouth").mkdir(parents=True)
     (root / "usr/lib64/plymouth/script.so").write_bytes(b"\x7fELF")
+    (root / "usr/lib64/plymouth/label-freetype.so").write_bytes(b"\x7fELF")
     (root / "usr/share/plymouth/themes/spinner").mkdir(parents=True)
     (root / "usr/share/plymouth/themes/spinner/spinner.plymouth").write_text("[Plymouth Theme]\n")
     (root / "boot").mkdir()

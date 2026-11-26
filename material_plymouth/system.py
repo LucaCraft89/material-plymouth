@@ -73,6 +73,15 @@ class System:
                 return hit[0]
         return None
 
+    def label_plugin(self):
+        """Plymouth's text-label plugin (label.so, label-ft.so, label-freetype.so, label-pango.so), or None. Plymouth 26's script plugin crashes plymouthd when it
+        is missing (it calls the console viewer it did not create), found by the QEMU boot tier; our theme draws no text itself, but the daemon still needs it."""
+        for pat in ("usr/lib*/plymouth/label*.so", "usr/lib/*/plymouth/label*.so", "usr/libexec/plymouth/label*.so"):
+            hit = sorted(glob.glob(str(self.p(pat))))
+            if hit:
+                return hit[0]
+        return None
+
     def initramfs_tool(self):
         for tool in ("dracut", "mkinitcpio", "initramfs-tools"):
             probe = {"initramfs-tools": "update-initramfs"}.get(tool, tool)

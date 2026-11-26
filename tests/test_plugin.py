@@ -23,7 +23,7 @@ THEME = "usr/share/plymouth/themes/material"
 DRACUT = """#!/bin/sh
 [ -n "$FAKE_DRACUT_FAIL" ] && { echo "dracut: boom" >&2; exit 1; }
 for i in "$FAKE_ROOT"/boot/initramfs-*.img; do
-  { echo usr/lib64/plymouth/script.so; [ -d "$FAKE_ROOT/%(theme)s" ] && for f in "$FAKE_ROOT/%(theme)s"/*; do echo "usr/share/plymouth/themes/material/$(basename "$f")"; done; head -c 2000 /dev/zero | tr '\\0' x; } > "$i"
+  { echo usr/lib64/plymouth/script.so; echo usr/lib64/plymouth/label-freetype.so; [ -d "$FAKE_ROOT/%(theme)s" ] && for f in "$FAKE_ROOT/%(theme)s"/*; do echo "usr/share/plymouth/themes/material/$(basename "$f")"; done; head -c 2000 /dev/zero | tr '\\0' x; } > "$i"
 done
 """
 LISTER = '#!/bin/sh\ncat "$1"\n'
