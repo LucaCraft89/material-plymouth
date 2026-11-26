@@ -1,0 +1,20 @@
+# Maintainer: LucaCraft89
+# Builds from source: the package ships the sources (code and the plugin manifest); nothing is rendered or rebuilt when it is installed. Turning the boot
+# splash on is the person's own step: `material-grub plymouth apply` (it rebuilds the initramfs and may edit the kernel command line). Not on the AUR yet.
+pkgname=material-plymouth
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Material 3 Expressive boot splash (Plymouth) that continues the Material GRUB theme'
+arch=('any')
+url='https://github.com/LucaCraft89/material-plymouth'
+license=('MIT')
+depends=('material-grub>=1.0.0' 'plymouth' 'mkinitcpio' 'python>=3.8' 'python-pillow')
+install=material-plymouth.install
+# MP_SOURCE overrides the source (CI builds from the checked-out tree: MP_SOURCE=file:///path/material-plymouth-$pkgver.tar.gz)
+source=("$pkgname-$pkgver.tar.gz::${MP_SOURCE:-https://github.com/LucaCraft89/material-plymouth/archive/v$pkgver.tar.gz}")
+sha256sums=('SKIP')   # the release script fills in the real sum once the tag exists
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  sh packaging/install-tree.sh . "$pkgdir"
+}

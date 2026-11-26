@@ -1,0 +1,5 @@
+material-plymouth (1.0.0) unstable; urgency=medium
+
+  * First release, level with material-grub (the three repositories start at 1.0.0).
+
+ -- LucaCraft89 <noreply@users.noreply.github.com>  Mon, 23 Nov 2026 12:00:00 +0000

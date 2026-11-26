@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+case "$1" in
+  remove) /usr/share/material-plymouth/bin/package-hook.sh remove || true ;;
+esac
+#DEBHELPER#
+exit 0
