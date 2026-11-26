@@ -49,7 +49,9 @@ class Contract(unittest.TestCase):
         entry = Path(d) / "mgplugin.py"
         entry.write_text("def main(argv, core):\n    return 0\n")
         m = Path(d) / "plymouth.json"
-        m.write_text(text.replace("@VERSION@", "1.0.0").replace("@SHARE@/bin/mgplugin.py", str(entry)))
+        from material_plymouth import __version__
+
+        m.write_text(text.replace("@VERSION@", __version__).replace("@SHARE@/bin/mgplugin.py", str(entry)))
         return m
 
     def test_the_manifest_this_part_ships_is_accepted(self):
@@ -61,6 +63,19 @@ class Contract(unittest.TestCase):
         self.assertFalse(rec.default, "the splash changes how the machine boots: it is never installed unasked")
         self.assertEqual(rec.needs, [], "Plymouth needs only the core")
         self.assertEqual(rec.layouts, ["normal"])
+
+    def test_the_repository_manifest_is_the_packaged_one_with_a_relative_entry(self):
+        """material-boot-part.json is what the bundle builder reads; it must say what the package says, the entry aside."""
+        shipped = json.loads((ROOT / "material-boot-part.json").read_text())
+        with tempfile.TemporaryDirectory() as t:
+            packaged = json.loads(self.render(t).read_text())
+        self.assertEqual(shipped.pop("entry"), "bin/mgplugin.py")
+        packaged.pop("entry")
+        self.assertEqual(shipped, packaged)
+        from material_plymouth import __version__
+
+        self.assertEqual(shipped["version"], __version__)
+        self.assertTrue((ROOT / "bin/mgplugin.py").is_file())
 
     def test_its_commands_and_menu_are_its_own(self):
         with tempfile.TemporaryDirectory() as t:
