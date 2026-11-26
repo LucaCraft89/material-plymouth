@@ -1,0 +1,9 @@
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+extend-exclude = ["spike"]   # throw-away Phase 0 code, if it is ever merged: it does not ship and is not held to the project's style
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# E501: `ruff format` wraps code; long comments and message strings are left as written.
+ignore = ["E501"]

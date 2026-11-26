@@ -1,0 +1,112 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      material_grub_ref:
+        description: "material-grub branch, tag or commit to test against (empty: the default below)"
+        required: false
+        default: ""
+permissions: {contents: read}
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # This part plugs into material-grub (its plugin API and the shared conf keys). The ref it is tested against: the run's input, else the repository
+  # variable MATERIAL_GRUB_REF, else the branch that has the plugin API until it is merged into material-grub's release/0.8.0 (then change it to that,
+  # and to a tag once there is one).
+  MATERIAL_GRUB_REF: ${{ inputs.material_grub_ref || vars.MATERIAL_GRUB_REF || 'feat/plymouth-contract' }}
+
+jobs:
+  lint:
+    name: Lint (ruff, shellcheck, actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install ruff && pipx install shellcheck-py && pipx install actionlint-py
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: shellcheck -x --severity=warning ci/*.sh
+      - run: actionlint
+
+  unit:
+    name: Unit tests (Python ${{ matrix.python }})
+    # Python 3.8 is the oldest Python the material-grub tools run on (RHEL 8 family), 3.13 the newest in use. Pinned to 24.04: `ubuntu-latest` is 26.04
+    # now, which has no Python 3.8 for setup-python.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: LucaCraft89/material-grub
+          ref: ${{ env.MATERIAL_GRUB_REF }}
+          path: material-grub
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python }}"}
+      - run: pip install pillow pyyaml
+      - run: python -m unittest discover -s tests -v
+        env:
+          MATERIAL_GRUB: ${{ github.workspace }}/material-grub
+          REQUIRE_CONTRACT: "1"      # a missing or incompatible material-grub is a failure here, not a skip
+
+  xvfb:
+    # Tier 2 of the plan: Plymouth's X11 renderer under Xvfb. Today it proves the harness on a stock animated theme (the screenshots are not blank and
+    # something moves); the Material theme plugs into the same script when it exists.
+    name: Plymouth in Xvfb (harness)
+    # Pinned to 24.04 (Plymouth 24.004, the version the Phase 0 spike was measured on); a run on a newer Plymouth (Arch and Fedora have 26.x) is a
+    # separate job to add once there is a theme to play.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update
+      - run: sudo env INITRD=No DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plymouth plymouth-theme-spinner plymouth-x11 xvfb imagemagick bc python3-pil
+      - run: ci/xvfb_play.sh spinner build/xvfb/spinner 6
+      - run: python3 ci/check_frames.py --size 1920x1080 --moving build/xvfb/spinner-*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: xvfb-spinner, path: build/xvfb/}
+
+  probe:
+    # Tier 3 of the plan, first part: what Plymouth and the initramfs tooling really look like on each distro (package names, the script plugin, the
+    # initramfs integration, how the default theme is chosen). The report is in the job summary and an artifact.
+    name: Distro probe (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: Fedora,   image: "registry.fedoraproject.org/fedora:latest"}
+          - {name: Ubuntu,   image: "docker.io/library/ubuntu:24.04"}
+          - {name: Debian,   image: "docker.io/library/debian:stable"}
+          - {name: Arch,     image: "docker.io/library/archlinux:latest"}
+          - {name: openSUSE, image: "registry.opensuse.org/opensuse/tumbleweed:latest"}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Plymouth in a fresh container and write down what is there
+        run: |
+          mkdir -p build/probe
+          docker run --rm -v "$PWD:/w:ro" -v "$PWD/build/probe:/out" "${{ matrix.image }}" sh /w/ci/probe-distro.sh /out
+      - name: Report
+        if: always()
+        run: |
+          { echo "### ${{ matrix.name }}"; echo '```'; cat build/probe/*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "probe-${{ matrix.name }}", path: build/probe/}
+
+  ci-ok:
+    # one name for branch protection to require
+    name: CI passed
+    needs: [lint, unit, xvfb, probe]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
+      - run: echo "every job passed"
