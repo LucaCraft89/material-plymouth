@@ -21,7 +21,7 @@ env:
   # This part plugs into material-boot-core (its plugin API, the shared code and the shared conf keys). The ref it is tested against: the run's input, else
   # the repository variable MATERIAL_CORE_REF, else the branch that has what this part needs until it is merged (then change it to main, and to a tag once
   # there is one). material-grub is needed by one job only, the hand-over test, which boots GRUB with its theme: MATERIAL_GRUB_REF the same way.
-  MATERIAL_CORE_REF: ${{ inputs.material_core_ref || vars.MATERIAL_CORE_REF || 'feat/ctx-json' }}
+  MATERIAL_CORE_REF: ${{ inputs.material_core_ref || vars.MATERIAL_CORE_REF || 'main' }}
   MATERIAL_GRUB_REF: ${{ inputs.material_grub_ref || vars.MATERIAL_GRUB_REF || 'release/0.8.0' }}
 
 jobs:
