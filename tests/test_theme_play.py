@@ -78,17 +78,33 @@ class Play(unittest.TestCase):
         cls.tmp.cleanup()
 
     def play(
-        self, style="rail", motion="full", bar="indeterminate", conf=None, ov=None, mode="boot", prompt=False, secs=4
+        self,
+        style="rail",
+        motion="full",
+        bar="indeterminate",
+        conf=None,
+        ov=None,
+        mode="boot",
+        prompt=False,
+        secs=4,
+        build=(W, H),
+        screen=(W, H),
     ):
         """Build the theme for these options and play it. Returns {frames, cpu, answer, look}."""
         Play.n += 1
         base = Path(self.tmp.name) / f"case{Play.n}"
         conf = dict(conf or self.conf, STYLE=style)
-        look = adapter.look(conf, ov or self.ov, adapter.parse_os_release(FEDORA), c=self.c)
-        theme.build(look, W, H, base / "material", motion=motion, bar=bar)
+        look = adapter.look(conf, ov or self.ov, adapter.parse_os_release(FEDORA), height=build[1], c=self.c)
+        theme.build(look, build[0], build[1], base / "material", motion=motion, bar=bar)
         env = dict(os.environ, PLY_MODE=mode, PROMPT="1" if prompt else "0")
         r = subprocess.run(
-            [str(ROOT / "ci/xvfb_play.sh"), str(base / "material"), str(base / "shot"), str(secs)],
+            [
+                str(ROOT / "ci/xvfb_play.sh"),
+                str(base / "material"),
+                str(base / "shot"),
+                str(secs),
+                f"{screen[0]}x{screen[1]}",
+            ],
             capture_output=True,
             text=True,
             env=env,
@@ -167,6 +183,57 @@ class Customisations(Play):
         for i in range(3):
             for j in range(i + 1, 3):
                 self.assertFalse(near(looks[i], looks[j], 30), "three different looks")
+
+
+class Screens(Play):
+    """A screen of another size than the theme was built for: the scene is scaled to fit and centred, and what is left over is the background colour, never a
+    small scene in a corner with bare edges (a 1366x768 laptop whose theme was built for another size)."""
+
+    def edges_are_surface(self, r, points, tol=10):
+        surface = self.hexc(r["look"].palette["surface"])
+        for pt in points:
+            self.assertTrue(
+                near(r["frames"][1].getpixel(pt), surface, tol),
+                f"{pt} is {r['frames'][1].getpixel(pt)}, not the background colour {surface}",
+            )
+
+    def test_a_smaller_screen_gets_the_scene_scaled_to_fill_it(self):
+        w, h = 1366, 768
+        r = self.play(secs=2, build=(W, H), screen=(w, h))
+        self.assertEqual(check_frames.check(r["paths"], size=(w, h)), [], "the frame is the screen's size and drawn")
+        z = min(w / W, h / H)
+        pc = self.hexc(r["look"].palette["primaryContainer"])
+        self.assertTrue(
+            near(r["frames"][1].getpixel((round(w / 2 - 250 * z), round(360 * z))), pc),
+            "the hero card sits where the scaled scene puts it (centred)",
+        )
+        cookie_x, cookie_y = round(w - 150 * z), round(140 * z)
+        self.assertGreater(
+            count(r["frames"][1], pc, (cookie_x - 20, cookie_y - 20, cookie_x + 20, cookie_y + 20)),
+            300,
+            "the cookie is in the top-right corner of the real screen",
+        )
+        self.edges_are_surface(r, [(2, 2), (w - 3, 2)])
+
+    def test_a_different_aspect_ratio_leaves_bands_in_the_background_colour(self):
+        w, h = 1280, 1024
+        r = self.play(secs=2, build=(W, H), screen=(w, h))
+        self.assertEqual(check_frames.check(r["paths"], size=(w, h)), [])
+        used = round(H * min(w / W, h / H))  # the scene is 1280 x 720 here, centred: bands above and below
+        band = (h - used) // 2
+        self.assertGreater(band, 100)
+        self.edges_are_surface(r, [(w // 2, 10), (w // 2, h - 10), (10, band // 2), (w - 10, h - band // 2)])
+
+    def test_a_theme_built_for_the_screen_is_laid_out_natively(self):
+        w, h = 1366, 768
+        r = self.play(secs=2, build=(w, h), screen=(w, h))
+        self.assertEqual(check_frames.check(r["paths"], size=(w, h), moving=True), [])
+        s = h / 1080
+        pc = self.hexc(r["look"].palette["primaryContainer"])
+        self.assertTrue(near(r["frames"][1].getpixel((round(w / 2 - 250 * s), round(360 * s))), pc))
+        self.assertEqual(
+            "ZS = 1;" in (Path(self.tmp.name) / f"case{Play.n}/material/material.script").read_text(), True
+        )
 
 
 class Prompt(Play):
