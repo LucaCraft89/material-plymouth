@@ -55,6 +55,33 @@ jobs:
           MATERIAL_GRUB: ${{ github.workspace }}/material-grub
           REQUIRE_CONTRACT: "1"      # a missing or incompatible material-grub is a failure here, not a skip
 
+  consistency:
+    # Tier 1 of the plan, the part that needs material-grub's built package: the Plymouth scene's pictures are pixel-identical to GRUB's own drawing,
+    # and every customisation (colours, one seed colour, names, icons, COOKIE, LOGO, sizes) reaches them. Builds the package from the material-grub ref
+    # (about a minute); REQUIRE_CORE makes a missing package a failure here instead of a skip.
+    name: Consistency with GRUB (built package)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: LucaCraft89/material-grub
+          ref: ${{ env.MATERIAL_GRUB_REF }}
+          path: material-grub
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil librsvg2-bin grub-common
+      - name: Build material-grub's package (sources only, like its own CI)
+        working-directory: material-grub
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install --require-hashes -r requirements.txt
+          .venv/bin/python scripts/package.py --res 1920x1080
+      - run: material-grub/.venv/bin/pip install pyyaml
+      - run: material-grub/.venv/bin/python -m unittest discover -s tests -v
+        env:
+          MATERIAL_GRUB: ${{ github.workspace }}/material-grub
+          REQUIRE_CONTRACT: "1"
+          REQUIRE_CORE: "1"
+
   xvfb:
     # Tier 2 of the plan: Plymouth's X11 renderer under Xvfb. Today it proves the harness on a stock animated theme (the screenshots are not blank and
     # something moves); the Material theme plugs into the same script when it exists.
@@ -103,7 +130,7 @@ jobs:
   ci-ok:
     # one name for branch protection to require
     name: CI passed
-    needs: [lint, unit, xvfb, probe]
+    needs: [lint, unit, consistency, xvfb, probe]
     if: always()
     runs-on: ubuntu-latest
     steps:
