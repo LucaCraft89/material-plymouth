@@ -1,3 +1,4 @@
 # shellcheck shell=bash
-post_upgrade() { /usr/share/material-plymouth/bin/package-hook.sh upgrade || true; }   # never fails the pacman transaction
+post_install() { /usr/share/material-plymouth/bin/package-hook.sh configure || true; }   # never fails the pacman transaction
+post_upgrade() { /usr/share/material-plymouth/bin/package-hook.sh configure || true; }
 pre_remove() { /usr/share/material-plymouth/bin/package-hook.sh remove || true; }

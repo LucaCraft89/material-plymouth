@@ -1,5 +1,5 @@
 # Builds from source: the RPM ships the sources (code and the plugin manifest); nothing is rendered or rebuilt when it is installed. Turning the boot splash
-# on rebuilds the initramfs and may edit the kernel command line, so it is the person's own step: `material-grub plymouth apply` (or the GUI).
+# on rebuilds the initramfs and may edit the kernel command line, so it is the person's own step: `material-boot plymouth apply` (or the GUI).
 Name:           material-plymouth
 Version:        1.0.0
 Release:        1%{?dist}
@@ -8,7 +8,7 @@ License:        MIT
 URL:            https://github.com/LucaCraft89/material-plymouth
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
-Requires:       material-grub >= 1.0.0
+Requires:       material-boot-core >= 1.0.0
 Requires:       plymouth
 Requires:       plymouth-plugin-script
 Requires:       plymouth-plugin-label
@@ -19,8 +19,8 @@ Requires:       python3-pillow
 
 %description
 A boot splash for Plymouth in the style of the Material GRUB theme: the same colours, the same per-distro look, an animated cookie and shapes, the
-Material 3 Expressive wavy loading bar, the disk-password prompt and the shutdown and update messages. It plugs into material-grub
-(`material-grub plymouth ...`) and is managed from its GUI. Installing the package does not change how your system boots; apply it yourself.
+Material 3 Expressive wavy loading bar, the disk-password prompt and the shutdown and update messages. It is a part of Material Boot
+(`material-boot plymouth ...`) and is managed from material-grub's GUI too. Installing the package does not change how your system boots; apply it yourself.
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -29,7 +29,7 @@ Material 3 Expressive wavy loading bar, the disk-password prompt and the shutdow
 sh packaging/install-tree.sh . %{buildroot}
 
 %posttrans
-/usr/share/material-plymouth/bin/package-hook.sh upgrade || :
+/usr/share/material-plymouth/bin/package-hook.sh configure || :
 
 %preun
 if [ $1 -eq 0 ]; then /usr/share/material-plymouth/bin/package-hook.sh remove || :; fi
