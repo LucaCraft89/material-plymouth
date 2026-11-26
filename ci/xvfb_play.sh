@@ -1,7 +1,10 @@
 #!/bin/sh
 # Plays a Plymouth theme with the X11 renderer under Xvfb and takes screenshots, so a theme can be looked at (and checked) without a VM.
-# usage: ci/xvfb_play.sh THEME OUTPREFIX [SECONDS] [WxH]
+# usage: [PLY_MODE=boot|shutdown] [PROMPT=1] ci/xvfb_play.sh THEME OUTPREFIX [SECONDS] [WxH]
 #   THEME       the name of an installed theme (/usr/share/plymouth/themes/NAME) or the path of a theme directory (NAME/NAME.plymouth inside)
+#   PLY_MODE    the mode plymouthd runs in (default boot; shutdown shows the shutdown message)
+#   PROMPT=1    instead of timed frames: asks for a disk password, types into it and photographs the prompt (needs xdotool); frames -1 to -4 are:
+#               the empty field, 7 typed characters, after two backspaces, after Enter (the answer is in OUTPREFIX.answer)
 #   OUTPREFIX   writes OUTPREFIX-1.png ... (one per second), OUTPREFIX.log (plymouthd's debug log) and OUTPREFIX.cpu
 # Needs: plymouth, plymouth-x11 (the renderer), Xvfb, ImageMagick (import), bc. Root or sudo: the theme is linked into /usr/share/plymouth/themes and
 # the daemon's config is written to /etc/plymouth. Meant for a CI runner or a throw-away container, not for a machine you boot from.
@@ -34,12 +37,30 @@ Xvfb "$display" -ac -screen 0 "${size}x24" >/dev/null 2>&1 &
 xv=$!
 sleep 1
 export DISPLAY=$display
-$SUDO env DISPLAY="$display" plymouthd --no-daemon --debug --debug-file="$out.log" --mode=boot --graphical-boot \
+$SUDO env DISPLAY="$display" plymouthd --no-daemon --debug --debug-file="$out.log" --mode="${PLY_MODE:-boot}" --graphical-boot \
   --kernel-command-line=splash >"$out.stdout" 2>&1 &
 pd=$!
 sleep 2
 $SUDO env DISPLAY="$display" plymouth show-splash
 sleep "${SETTLE:-3}"
+
+if [ "${PROMPT:-0}" = 1 ]; then
+  ( $SUDO env DISPLAY="$display" plymouth ask-for-password --prompt=Password --command=cat >"$out.answer" 2>&1 & )
+  sleep 2
+  import -window root "$out-1.png"
+  xdotool type --delay 80 hunter2
+  sleep 1
+  import -window root "$out-2.png"
+  xdotool key BackSpace BackSpace
+  sleep 1
+  import -window root "$out-3.png"
+  xdotool type x
+  xdotool key Return
+  sleep 2
+  import -window root "$out-4.png"
+  echo "prompt: answer '$(cat "$out.answer")'"
+  exit 0
+fi
 
 # the daemon runs as root (a child of sudo, when there is one): measure the process that really is plymouthd
 real=$(pgrep -x plymouthd | head -n1 || true)

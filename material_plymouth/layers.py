@@ -126,3 +126,125 @@ def composite(layers, W, H, only=None):
             im, x, y = layers[name]
             _paste(cv, im, x, y)
     return cv
+
+
+# ---------------------------------------------------------------- list and split: one row, no list
+def row_geometry(look, W, H, x0=None):
+    """Where the single selected row sits: the place the centred list (or, in split, the right-hand list) puts one row (Renderer.draw_list)."""
+    R = look.R
+    u, L = R.u, R.LIST
+    rowh, col = u(L["row"]), u(L["col"])
+    x0 = (W - col) // 2 if x0 is None else x0
+    top = max(u(L["top"]), min((H - rowh) // 2, u(L["bottom"]) - rowh))
+    return {"x0": x0, "top": top, "row": rowh, "col": col}
+
+
+def row(look, W, H, x0=None):
+    """The selected row of list/split: {'row_cookie': square shape (rotates and morphs), 'row_glyph': upright glyph, 'row_pill': the name pill}, plus 'geometry'."""
+    R, p, e = look.R, look.palette, look.entry
+    u, L = R.u, R.LIST
+    g = row_geometry(look, W, H, x0)
+    rowh, x0, top, col = g["row"], g["x0"], g["top"], g["col"]
+    hexc = look.core.mgscenes.hexc
+    glyph = R.glyph(e["key"], u(L["shape_glyph"]), hexc(p["onPrimary"]) + (255,))
+    ph = u(64)
+    pill = R._list_pill(R.list_label(e), e, p, True, col - rowh - u(14), ph)
+    return {
+        "row_cookie": (R.shape("cookie", rowh, p["primary"]), x0, top),
+        "row_glyph": (glyph, round(x0 + rowh / 2 - glyph.width / 2), round(top + rowh / 2 - glyph.height / 2)),
+        "row_pill": (pill, x0 + rowh + u(14), top + (rowh - ph) // 2),
+        "geometry": g,
+    }
+
+
+def list_pills(look, W, H, cx=None, y=None, maxw=None, h=None):
+    """The info pills in the list styles: under the list (list), under the hero (split). Positions as Renderer.render_entry sets them."""
+    R = look.R
+    cv = _blank(W, H)
+    R.pill_row(R.info_pills(look.entry), look.palette, W, y, cv, cx=cx, maxw=maxw, h=h)
+    return _crop(cv)
+
+
+def side_hero(look, W, H):
+    """split: the hero on the left as Renderer.draw_side_hero draws it, in layers: the cookie (rotates, morphs) with its glyph, or a white card for a logo of
+    your own; and the title."""
+    R, p, e = look.R, look.palette, look.entry
+    u = R.u
+    hexc = look.core.mgscenes.hexc
+    cx, cy = round(W * 0.25), u(450)
+    out = {}
+    logo = R.logos.get(look.key)
+    if logo:
+        card_im = R.rrect(u(480), u(270), u(64), (255, 255, 255, 255))
+        cv = _blank(W, H)
+        R.paste_c(cv, card_im, cx, cy)
+        R.paste_c(cv, R.fit_logo(logo, u(420), u(230)), cx, cy)
+        out["side_card"] = _crop(cv)
+    else:
+        ck = R.shape("cookie", u(400), p["primaryContainer"])
+        out["side_cookie"] = (ck, round(cx - ck.width / 2), round(cy - ck.height / 2))
+        g = R.glyph(look.key, u(200), hexc(p["onPrimaryContainer"]) + (255,))
+        out["side_glyph"] = (g, round(cx - g.width / 2), round(cy - g.height / 2))
+    t = R.title_for(e)
+    size = u(96)
+    while size > u(48) and R.font(size, 800, 135, 60).getlength(t) > W * 0.38:
+        size -= u(4)
+    cv = _blank(W, H)
+    ImageDraw.Draw(cv).text(
+        (cx, cy + u(290)), t, font=R.font(size, 800, 135, 60), fill=hexc(p["primary"]) + (255,), anchor="mm"
+    )
+    out["side_title"] = _crop(cv)
+    return out
+
+
+# ---------------------------------------------------------------- the wavy bar, the password prompt and the messages
+BAR_W, BAR_STROKE, BAR_AMP, BAR_LAM, BAR_STEP = 560, 10, 6, 44, 2  # 1080-high design values
+
+
+def bar_assets(look):
+    """The pictures of the wavy bar: a dot of the wave (the wave is drawn from them), the track and the stop dot. All in the screen's pixels."""
+    R, p = look.R, look.palette
+    u = R.u
+    hexc = look.core.mgscenes.hexc
+    s = u(BAR_STROKE)
+    return {
+        "dot": R.rrect(s, s, s // 2, hexc(p["primary"]) + (255,)),
+        "track": R.rrect(u(BAR_W), s, s // 2, hexc(p["secondaryContainer"]) + (255,)),
+        "stop": R.rrect(s, s, s // 2, hexc(p["primary"]) + (255,)),
+    }
+
+
+def prompt_assets(look):
+    """The disk-password prompt: the pill-shaped field, one dot per typed character, and its label."""
+    R, p = look.R, look.palette
+    u = R.u
+    hexc = look.core.mgscenes.hexc
+    d = u(20)
+    return {
+        "pw_field": R.rrect(u(560), u(72), u(36), hexc(p["surfaceContainerHigh"]) + (255,)),
+        "pw_dot": R.rrect(d, d, d // 2, hexc(p["onSurface"]) + (255,)),
+        "pw_label": text_line(look, "Enter your disk password", 30, 520),
+    }
+
+
+def text_line(look, text, size, weight=420):
+    """One line of text in the muted colour, as a cropped picture (Plymouth needs no fonts: every string is a picture)."""
+    R, p = look.R, look.palette
+    u = R.u
+    f = R.text_font(text, u(size), weight, 105)
+    w = int(f.getlength(text)) + u(8)
+    im = Image.new("RGBA", (w, u(size) * 2), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text(
+        (w // 2, u(size)), text, font=f, fill=look.core.mgscenes.hexc(p["onSurfaceVariant"]) + (255,), anchor="mm"
+    )
+    return _crop(im)[0]
+
+
+MESSAGES = {
+    "msg_shutdown": "Shutting down",
+    "msg_updates": "Installing updates",
+}  # Plymouth's mode says shutdown or updates, not poweroff or reboot
+
+
+def message_assets(look):
+    return {name: text_line(look, text, 40) for name, text in MESSAGES.items()}
