@@ -1,3 +1,9 @@
+material-plymouth (1.1.0) unstable; urgency=medium
+
+  * The installer screen asks the loading bar, the motion and the command line (install.questions).
+
+ -- LucaCraft89 <noreply@users.noreply.github.com>  Fri, 27 Nov 2026 12:00:00 +0000
+
 material-plymouth (1.0.0) unstable; urgency=medium
 
   * First release, level with material-grub (the three repositories start at 1.0.0).

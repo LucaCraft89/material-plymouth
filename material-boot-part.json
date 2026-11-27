@@ -2,7 +2,7 @@
   "manifest": 2,
   "name": "plymouth",
   "title": "Plymouth boot splash",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "summary": "boot splash that continues the GRUB theme",
   "core_api": 2,
   "core_min": "1.0.0",
@@ -57,6 +57,29 @@
         "name": "no-cmdline",
         "takes": "flag",
         "summary": "never edit the kernel command line (you add 'splash' yourself)"
+      }
+    ],
+    "questions": [
+      {
+        "id": "bar", "title": "Loading bar", "kind": "choice", "default": "indeterminate", "target": {"conf": "PLYMOUTH_BAR"},
+        "help": "How the wavy loading bar behaves while the system starts.",
+        "options": [
+          {"value": "indeterminate", "label": "Keeps moving", "help": "The wave keeps running."},
+          {"value": "progress", "label": "Fills as the boot progresses", "help": "The bar fills up as the boot goes on."}
+        ]
+      },
+      {
+        "id": "motion", "title": "How much moves", "kind": "choice", "default": "full", "target": {"conf": "PLYMOUTH_MOTION"},
+        "help": "The turning shapes and cookies, the pulsing hero card and the running wave.",
+        "options": [
+          {"value": "full", "label": "Full", "help": "Shapes and cookies turn and drift, the hero card pulses, the row cookie morphs, the wave runs."},
+          {"value": "calm", "label": "Calm", "help": "The same, slower, without the pulse and the morph."},
+          {"value": "off", "label": "Still", "help": "Nothing moves (the bar still fills if you chose that)."}
+        ]
+      },
+      {
+        "id": "no-cmdline", "title": "I will add 'splash' to the kernel command line myself", "kind": "toggle", "default": false, "target": {"option": "no-cmdline"},
+        "help": "Plymouth needs 'splash' on the kernel command line. By default the installer adds it for you (and puts it back on removal). Say Yes to have the installer never edit the kernel command line."
       }
     ]
   },
