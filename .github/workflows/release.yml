@@ -1,0 +1,43 @@
+name: Release
+# Creates the tag and the GitHub Release for one commit, by hand (workflow_dispatch). It refuses a commit that is not on main,
+# a version that is not the one the repository says it is, and a tag that already exists. The tag is annotated.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to release (full SHA, on main)"
+        required: true
+      version:
+        description: "Version without the v (must equal material-boot-part.json)"
+        required: true
+permissions: {contents: read}
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    env:
+      SHA: ${{ inputs.sha }}
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.sha }}", fetch-depth: 0}
+      - name: Check
+        run: |
+          set -eu
+          case "$VERSION" in *[!0-9.]*|"") echo "version must be digits and dots"; exit 1;; esac
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "give the full SHA"; exit 1; }
+          git fetch -q origin main
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "$SHA is not on main"; exit 1; }
+          have=$(python3 -c "import json;print(json.load(open('material-boot-part.json'))['version'])")
+          [ "$have" = "$VERSION" ] || { echo "the repository says $have, not $VERSION"; exit 1; }
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then echo "v$VERSION exists already"; exit 1; fi
+      - name: Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "material-plymouth $VERSION" "$SHA"
+          git push origin "v$VERSION"
+      - name: Release
+        run: gh release create "v$VERSION" --verify-tag --title "material-plymouth $VERSION" --generate-notes
