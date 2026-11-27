@@ -2,7 +2,7 @@
   "manifest": 2,
   "name": "plymouth",
   "title": "Plymouth boot splash",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "summary": "boot splash that continues the GRUB theme",
   "core_api": 2,
   "core_min": "1.0.0",

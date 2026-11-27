@@ -71,11 +71,35 @@ class Contract(unittest.TestCase):
             packaged = json.loads(self.render(t).read_text())
         self.assertEqual(shipped.pop("entry"), "bin/mgplugin.py")
         packaged.pop("entry")
+        # the questions are for the installer screen of a bundle install (it reads this file); the installed manifest has no use for them
+        shipped["install"].pop("questions", None)
         self.assertEqual(shipped, packaged)
         from material_plymouth import __version__
 
         self.assertEqual(shipped["version"], __version__)
         self.assertTrue((ROOT / "bin/mgplugin.py").is_file())
+
+    def test_the_questions_of_the_installer_screen_are_valid_and_their_targets_exist(self):
+        """The core (1.1.0 on) reads install.questions: none may be dropped as malformed, and every target is a real option or settings key."""
+        if not hasattr(self.plugins, "read_questions"):
+            self.skipTest("this core is older than install.questions")
+        shipped = json.loads((ROOT / "material-boot-part.json").read_text())
+        rec = self.plugins.read_manifest(ROOT / "material-boot-part.json")
+        asked = shipped["install"]["questions"]
+        self.assertEqual([q["id"] for q in rec.questions], [q["id"] for q in asked], rec.warnings)
+        from material_boot import conf
+
+        options = {o["name"] for o in rec.options}
+        for q in rec.questions:
+            t = q["target"]
+            if "option" in t:
+                self.assertIn(t["option"], options, q["id"])
+            else:
+                self.assertIn(t["conf"], conf.CONF_DEFAULTS, q["id"])
+                if t["conf"] in conf.CONF_CHOICES:  # every offered value is one the settings file accepts
+                    self.assertEqual(
+                        sorted(o["value"] for o in q["options"]), sorted(conf.CONF_CHOICES[t["conf"]]), q["id"]
+                    )
 
     def test_its_commands_and_menu_are_its_own(self):
         with tempfile.TemporaryDirectory() as t:
