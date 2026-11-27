@@ -6,19 +6,46 @@ on:
     inputs:
       sha:
         description: "Commit to release (full SHA, on main)"
-        required: true
+        required: false
+        default: ""
       version:
         description: "Version without the v (must equal material-boot-part.json)"
         required: true
+      notes:
+        description: "Release notes: a Markdown file of this repository (docs/releases/1.0.0.md); empty = generated from the pull requests"
+        required: false
+        default: ""
+      notes_only:
+        description: "Only replace the notes of the existing release (reads the notes file from the branch this is run on; sha is ignored)"
+        type: boolean
+        default: false
 permissions: {contents: read}
 jobs:
+  notes:
+    name: Replace the notes of a release
+    if: ${{ inputs.notes_only }}
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    env:
+      VERSION: ${{ inputs.version }}
+      NOTES: ${{ inputs.notes }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -eu
+          case "$VERSION" in *[!0-9.]*|"") echo "version must be digits and dots"; exit 1;; esac
+          [ -f "$NOTES" ] || { echo "no such notes file: $NOTES"; exit 1; }
+          gh release edit "v$VERSION" --notes-file "$NOTES"
   release:
     name: Tag and release
+    if: ${{ !inputs.notes_only }}
     runs-on: ubuntu-latest
     permissions: {contents: write}
     env:
       SHA: ${{ inputs.sha }}
       VERSION: ${{ inputs.version }}
+      NOTES: ${{ inputs.notes }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +54,8 @@ jobs:
         run: |
           set -eu
           case "$VERSION" in *[!0-9.]*|"") echo "version must be digits and dots"; exit 1;; esac
+          [ -n "$SHA" ] || { echo "sha is required"; exit 1; }
+          [ -z "$NOTES" ] || [ -f "$NOTES" ] || { echo "no such notes file in $SHA: $NOTES"; exit 1; }
           [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "give the full SHA"; exit 1; }
           git fetch -q origin main
           git merge-base --is-ancestor "$SHA" origin/main || { echo "$SHA is not on main"; exit 1; }
@@ -40,4 +69,7 @@ jobs:
           git tag -a "v$VERSION" -m "material-plymouth $VERSION" "$SHA"
           git push origin "v$VERSION"
       - name: Release
-        run: gh release create "v$VERSION" --verify-tag --title "material-plymouth $VERSION" --generate-notes
+        run: |
+          set -eu
+          if [ -n "$NOTES" ]; then set -- --notes-file "$NOTES"; else set -- --generate-notes; fi
+          gh release create "v$VERSION" --verify-tag --title "material-plymouth $VERSION" "$@"
